@@ -23,7 +23,15 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
     if (!showCheckout) return;
     setCheckoutStatus('processing');
 
-    const isCloud = (import.meta as any).env.VITE_APP_MODE === 'CLOUD' || window.location.hostname.includes('accesoit.com.ar');
+    console.log('[DEBUG] Payment attempt:', {
+      hostname: window.location.hostname,
+      env: (import.meta as any).env.VITE_APP_MODE
+    });
+
+    const isCloud = (import.meta as any).env.VITE_APP_MODE === 'CLOUD' ||
+      (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1'));
+
+    console.log('[DEBUG] isCloud result:', isCloud);
 
     if (isCloud) {
       try {

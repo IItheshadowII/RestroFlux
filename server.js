@@ -256,6 +256,8 @@ app.post('/api/license/verify', async (req, res) => {
 
 app.post('/api/subscriptions', async (req, res) => {
   const { tenantId, planId, price, email, backUrl } = req.body;
+  console.log('--- NEW SUBSCRIPTION REQUEST ---');
+  console.log('Data:', { tenantId, planId, price, email, backUrl });
 
   try {
     const response = await preapproval.create({
