@@ -9,7 +9,7 @@ import { PLANS } from '../constants';
 import { PlanTier, Tenant, SubscriptionStatus, User } from '../types';
 import { db } from '../services/db';
 
-export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => void }> = ({ tenant, onUpdate }) => {
+export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: Tenant) => void }> = ({ tenant, user, onUpdate }) => {
   const [loadingPlan, setLoadingPlan] = useState<PlanTier | null>(null);
   const [showCheckout, setShowCheckout] = useState<{ planId: PlanTier, name: string, price: number } | null>(null);
   const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'processing' | 'success'>('idle');
@@ -23,15 +23,8 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
     if (!showCheckout) return;
     setCheckoutStatus('processing');
 
-    console.log('[DEBUG] Payment attempt:', {
-      hostname: window.location.hostname,
-      env: (import.meta as any).env.VITE_APP_MODE
-    });
-
     const isCloud = (import.meta as any).env.VITE_APP_MODE === 'CLOUD' ||
       (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1'));
-
-    console.log('[DEBUG] isCloud result:', isCloud);
 
     if (isCloud) {
       try {
@@ -42,6 +35,7 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
             tenantId: tenant.id,
             planId: showCheckout.planId,
             price: showCheckout.price,
+            email: user.email,
             backUrl: window.location.href // Return to this page
           })
         });

@@ -47,8 +47,8 @@ const LoginPage = ({ onLogin }: { onLogin: (u: User) => void }) => {
               <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Email</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <input 
-                  type="email" 
+                <input
+                  type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-slate-800/50 border border-slate-700 text-white rounded-2xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
@@ -61,8 +61,8 @@ const LoginPage = ({ onLogin }: { onLogin: (u: User) => void }) => {
               <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
               <div className="relative">
                 <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-slate-800/50 border border-slate-700 text-white rounded-2xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
@@ -71,7 +71,7 @@ const LoginPage = ({ onLogin }: { onLogin: (u: User) => void }) => {
               </div>
             </div>
 
-            <button 
+            <button
               type="submit"
               disabled={loading}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2 group"
@@ -127,7 +127,7 @@ const App: React.FC = () => {
 
     // Global event listener for tab switching
     const handleSwitchTab = (e: any) => {
-       setActivePage(e.detail);
+      setActivePage(e.detail);
     };
     window.addEventListener('switchTab', handleSwitchTab);
     return () => window.removeEventListener('switchTab', handleSwitchTab);
@@ -177,22 +177,22 @@ const App: React.FC = () => {
   const hasAccess = !pagePermissionMap[currentActivePage] || permissions.includes(pagePermissionMap[currentActivePage]);
 
   return (
-    <Layout 
-      user={user} 
-      onLogout={handleLogout} 
-      activePage={currentActivePage} 
+    <Layout
+      user={user}
+      onLogout={handleLogout}
+      activePage={currentActivePage}
       setActivePage={setActivePage}
     >
       {isLocked && (
         <div className="mb-10 p-8 bg-red-500/10 border-2 border-red-500/20 rounded-[2rem] flex flex-col md:flex-row items-center gap-8 text-red-400 shadow-2xl animate-in slide-in-from-top-4 duration-500">
           <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center flex-shrink-0">
-             <Store size={32} />
+            <Store size={32} />
           </div>
           <div className="flex-1 text-center md:text-left">
             <h4 className="text-xl font-black italic tracking-tight uppercase">Suscripción Suspendida / Bloqueada</h4>
             <p className="text-sm opacity-90 mt-1 font-bold">Tu cuenta ha sido limitada debido a un problema con el pago de Mercado Pago o el fin del periodo de gracia.</p>
           </div>
-          <button 
+          <button
             onClick={() => setActivePage('billing')}
             className="px-10 py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black transition-all shadow-xl shadow-red-600/30 active:scale-95 flex items-center gap-2"
           >
@@ -209,7 +209,7 @@ const App: React.FC = () => {
           {currentActivePage === 'kitchen' && <KitchenPage tenantId={tenant.id} />}
           {currentActivePage === 'tables' && <TablesPage tenantId={tenant.id} user={user} />}
           {currentActivePage === 'users' && <UsersRolesPage tenantId={tenant.id} />}
-          {currentActivePage === 'billing' && <BillingPage tenant={tenant} onUpdate={refreshTenantData} />}
+          {currentActivePage === 'billing' && <BillingPage tenant={tenant} user={user} onUpdate={refreshTenantData} />}
           {currentActivePage === 'cash' && <CashierPage tenantId={tenant.id} user={user} />}
         </>
       )}
