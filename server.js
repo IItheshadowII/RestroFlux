@@ -46,6 +46,55 @@ const VALID_TABLES = ['tenants', 'users', 'roles', 'products', 'categories', 'ta
 // Helper: Sanitize table name
 const isValidTable = (table) => VALID_TABLES.includes(table);
 
+// --- MERCADO PAGO ROUTES ---
+
+app.post('/api/subscriptions', async (req, res) => {
+  const { tenantId, planId, price, email, backUrl } = req.body;
+  console.log('--- NEW SUBSCRIPTION REQUEST ---');
+  console.log('Data:', { tenantId, planId, price, email, backUrl });
+
+  try {
+    const response = await preapproval.create({
+      body: {
+        reason: `Suscripción GastroFlow ${planId}`,
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: "months",
+          transaction_amount: price,
+          currency_id: "ARS"
+        },
+        back_url: backUrl || "https://gastroflow.accesoit.com.ar/billing",
+        payer_email: email || "test_user_123456@testuser.com",
+        external_reference: tenantId,
+        status: "pending"
+      }
+    });
+
+    res.json({ init_point: response.init_point, id: response.id });
+  } catch (error) {
+    console.error('Error creating subscription:', error);
+    res.status(500).json({ error: 'Failed to create subscription', details: error.message });
+  }
+});
+
+app.post('/api/webhooks/mercadopago', async (req, res) => {
+  const { type, data } = req.body;
+  const { id } = data || {};
+
+  console.log('Webhook received:', type, id);
+
+  try {
+    if (type === 'subscription_preapproval') {
+      // Logic to update tenant status would go here
+      // For now we just log it as we need to fetch the preapproval details
+    }
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.sendStatus(500);
+  }
+});
+
 // --- GENERIC API ROUTES (Backend for Frontend) ---
 
 // Get All
@@ -252,54 +301,6 @@ app.post('/api/license/verify', async (req, res) => {
   }
 });
 
-// --- MERCADO PAGO ROUTES ---
-
-app.post('/api/subscriptions', async (req, res) => {
-  const { tenantId, planId, price, email, backUrl } = req.body;
-  console.log('--- NEW SUBSCRIPTION REQUEST ---');
-  console.log('Data:', { tenantId, planId, price, email, backUrl });
-
-  try {
-    const response = await preapproval.create({
-      body: {
-        reason: `Suscripción GastroFlow ${planId}`,
-        auto_recurring: {
-          frequency: 1,
-          frequency_type: "months",
-          transaction_amount: price,
-          currency_id: "ARS"
-        },
-        back_url: backUrl || "https://gastroflow.accesoit.com.ar/billing",
-        payer_email: email || "test_user_123456@testuser.com",
-        external_reference: tenantId,
-        status: "pending"
-      }
-    });
-
-    res.json({ init_point: response.init_point, id: response.id });
-  } catch (error) {
-    console.error('Error creating subscription:', error);
-    res.status(500).json({ error: 'Failed to create subscription', details: error.message });
-  }
-});
-
-app.post('/api/webhooks/mercadopago', async (req, res) => {
-  const { type, data } = req.body;
-  const { id } = data || {};
-
-  console.log('Webhook received:', type, id);
-
-  try {
-    if (type === 'subscription_preapproval') {
-      // Logic to update tenant status would go here
-      // For now we just log it as we need to fetch the preapproval details
-    }
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.sendStatus(500);
-  }
-});
 
 // Serve Static Files (Vite Build)
 app.use(express.static(path.join(__dirname, 'dist')));
