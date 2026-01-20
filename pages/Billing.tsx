@@ -23,7 +23,7 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
     if (!showCheckout) return;
     setCheckoutStatus('processing');
 
-    const isCloud = (import.meta as any).env.VITE_APP_MODE === 'CLOUD';
+    const isCloud = (import.meta as any).env.VITE_APP_MODE === 'CLOUD' || window.location.hostname.includes('accesoit.com.ar');
 
     if (isCloud) {
       try {
@@ -102,8 +102,8 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
                   {PLANS[tenant.plan].name}
                 </span>
                 <span className={`px-5 py-1.5 rounded-full text-xs font-black uppercase tracking-[0.1em] flex items-center gap-2 border ${tenant.subscriptionStatus === SubscriptionStatus.ACTIVE
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                    : 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  : 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse'
                   }`}>
                   <div className={`w-2 h-2 rounded-full ${tenant.subscriptionStatus === SubscriptionStatus.ACTIVE ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`}></div>
                   {tenant.subscriptionStatus === SubscriptionStatus.ACTIVE ? 'Servicio Activo' : 'Acceso Restringido'}
@@ -129,8 +129,8 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
           <div
             key={plan.id}
             className={`group relative flex flex-col p-10 rounded-[3rem] border-2 transition-all duration-500 ${tenant.plan === plan.id
-                ? 'bg-blue-600/10 border-blue-500/50 shadow-2xl shadow-blue-500/10'
-                : 'bg-slate-900/40 border-slate-800/80 hover:border-blue-500/30 hover:bg-slate-900/60 shadow-xl hover:shadow-blue-500/5'
+              ? 'bg-blue-600/10 border-blue-500/50 shadow-2xl shadow-blue-500/10'
+              : 'bg-slate-900/40 border-slate-800/80 hover:border-blue-500/30 hover:bg-slate-900/60 shadow-xl hover:shadow-blue-500/5'
               }`}
           >
             {tenant.plan === plan.id && (
@@ -141,8 +141,8 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
 
             <div className="mb-10 text-center">
               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-6 transition-transform group-hover:scale-110 ${plan.id === PlanTier.BASIC ? 'bg-slate-800 text-slate-400' :
-                  plan.id === PlanTier.PRO ? 'bg-blue-600/20 text-blue-400' :
-                    'bg-purple-600/20 text-purple-400'
+                plan.id === PlanTier.PRO ? 'bg-blue-600/20 text-blue-400' :
+                  'bg-purple-600/20 text-purple-400'
                 }`}>
                 {plan.id === PlanTier.BASIC ? <Shield size={28} /> :
                   plan.id === PlanTier.PRO ? <Zap size={28} /> : <Crown size={28} />}
@@ -169,8 +169,8 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
               disabled={tenant.plan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE}
               onClick={() => handleSubscribeClick(plan)}
               className={`w-full py-5 rounded-[1.5rem] font-black text-lg transition-all flex items-center justify-center gap-3 ${tenant.plan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE
-                  ? 'bg-slate-800/50 text-slate-600 cursor-default border border-slate-700/50'
-                  : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-xl active:scale-95 shadow-blue-600/20'
+                ? 'bg-slate-800/50 text-slate-600 cursor-default border border-slate-700/50'
+                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-xl active:scale-95 shadow-blue-600/20'
                 }`}
             >
               {tenant.plan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE ? (
@@ -219,8 +219,8 @@ export const BillingPage: React.FC<{ tenant: Tenant, onUpdate: (t: Tenant) => vo
                 </td>
                 <td className="px-8 py-6 text-center">
                   <span className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${tenant.subscriptionStatus === SubscriptionStatus.ACTIVE
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                      : 'bg-red-500/10 text-red-400 border-red-500/20'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    : 'bg-red-500/10 text-red-400 border-red-500/20'
                     }`}>
                     {tenant.subscriptionStatus === SubscriptionStatus.ACTIVE ? 'Aprobado' : 'Pendiente'}
                   </span>
