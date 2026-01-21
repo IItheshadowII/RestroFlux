@@ -128,21 +128,46 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
     setIsUserModalOpen(true);
   };
 
-  const handleToggleUserStatus = (user: User) => {
-    // Esta función probablemente quiera desactivar temporalmente
-    // Pero si usamos el Soft Delete de la DB, desaparece de la lista.
-    // Para simplificar, usaremos removeUser de DB que hace soft delete.
-    if (window.confirm("¿Desactivar usuario? Desaparecerá de la lista activa.")) {
-       try {
-         db.removeUser(user.id, tenantId);
-         refreshData();
-       } catch (e: any) {
-         alert(e.message);
-       }
+  const handleToggleUserStatus = async (user: User) => {
+    // En cloud usamos la API (soft delete). En local, el adaptador DB.
+    if (!user.isActive) return; // De momento solo soportamos desactivar desde la UI
+
+    if (!window.confirm("¿Desactivar usuario? Desaparecerá de la lista activa.")) {
+      return;
+    }
+
+    if (isCloud) {
+      try {
+        const token = localStorage.getItem('gastroflow_token');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/tenants/${tenantId}/users/${user.id}`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          alert(data?.error || 'No se pudo desactivar el usuario.');
+        } else {
+          refreshData();
+        }
+      } catch (e: any) {
+        console.error(e);
+        alert('Error de red al desactivar el usuario.');
+      }
+      return;
+    }
+
+    try {
+      db.removeUser(user.id, tenantId);
+      refreshData();
+    } catch (e: any) {
+      alert(e.message);
     }
   };
 
-  const handleDeleteUser = (e: React.MouseEvent, targetUser: User) => {
+  const handleDeleteUser = async (e: React.MouseEvent, targetUser: User) => {
     e.stopPropagation();
     
     const currentUserStr = localStorage.getItem('gastroflow_current_user');
@@ -153,25 +178,75 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
       return;
     }
 
-    if (window.confirm(`¿Estás seguro de que deseas dar de baja a "${targetUser.name}"?`)) {
+    if (!window.confirm(`¿Estás seguro de que deseas dar de baja a "${targetUser.name}"?`)) {
+      return;
+    }
+
+    if (isCloud) {
       try {
-        db.removeUser(targetUser.id, tenantId);
-        refreshData();
+        const token = localStorage.getItem('gastroflow_token');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/tenants/${tenantId}/users/${targetUser.id}`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          alert(data?.error || 'No se pudo dar de baja al usuario.');
+        } else {
+          refreshData();
+        }
       } catch (error: any) {
-        alert(error.message);
+        console.error(error);
+        alert('Error de red al dar de baja al usuario.');
       }
+      return;
+    }
+
+    try {
+      db.removeUser(targetUser.id, tenantId);
+      refreshData();
+    } catch (error: any) {
+      alert(error.message);
     }
   };
 
-  const handleDeleteRole = (e: React.MouseEvent, id: string) => {
+  const handleDeleteRole = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (window.confirm('¿Estás seguro de que deseas eliminar este rol?')) {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este rol?')) {
+      return;
+    }
+
+    if (isCloud) {
       try {
-        db.removeRole(id, tenantId);
-        refreshData();
+        const token = localStorage.getItem('gastroflow_token');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/tenants/${tenantId}/roles/${id}`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          alert(data?.error || 'No se pudo eliminar el rol.');
+        } else {
+          refreshData();
+        }
       } catch (error: any) {
-        alert(error.message);
+        console.error(error);
+        alert('Error de red al eliminar el rol.');
       }
+      return;
+    }
+
+    try {
+      db.removeRole(id, tenantId);
+      refreshData();
+    } catch (error: any) {
+      alert(error.message);
     }
   };
 
@@ -187,15 +262,85 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
     );
   };
 
-  const handleSaveUser = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-    const formData = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const formData = new FormData(form);
     
+    const name = formData.get('name') as string;
+    const email = formData.get('email') as string;
+    const roleId = formData.get('roleId') as string;
+    const password = formData.get('password') as string | null;
+
+    if (!name || !email || !roleId) {
+      alert('Completa nombre, email y rol.');
+      setLoading(false);
+      return;
+    }
+
+    if (isCloud) {
+      try {
+        const token = localStorage.getItem('gastroflow_token');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        if (editingItem) {
+          // Edición: solo actualizamos nombre/rol desde la UI
+          const res = await fetch(`/api/tenants/${tenantId}/users/${editingItem.id}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({ name, roleId }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            alert(data?.error || 'No se pudieron guardar los cambios del integrante.');
+            setLoading(false);
+            return;
+          }
+        } else {
+          if (!canAddMoreUsers) {
+            alert('Has alcanzado el límite de usuarios de tu plan.');
+            setLoading(false);
+            return;
+          }
+          if (!password || password.length < 6) {
+            alert('Define una contraseña inicial de al menos 6 caracteres para el nuevo integrante.');
+            setLoading(false);
+            return;
+          }
+
+          const res = await fetch(`/api/tenants/${tenantId}/users`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ name, email, roleId, password }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            alert(data?.error || 'No se pudo registrar el nuevo integrante.');
+            setLoading(false);
+            return;
+          }
+        }
+
+        await refreshData();
+        setIsUserModalOpen(false);
+        setEditingItem(null);
+        setLoading(false);
+        form.reset();
+      } catch (error: any) {
+        console.error(error);
+        alert('Error de red al guardar el integrante.');
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Modo local (demo)
     const userData = {
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
-      roleId: formData.get('roleId') as string,
+      name,
+      email,
+      roleId,
       isActive: true,
     };
 
@@ -203,14 +348,14 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
       db.update<User>('users', editingItem.id, tenantId, userData);
     } else {
       if (!canAddMoreUsers) {
-        alert("Has alcanzado el límite de usuarios de tu plan.");
+        alert('Has alcanzado el límite de usuarios de tu plan.');
         setLoading(false);
         return;
       }
       db.insert<User>('users', {
         id: `user-${Date.now()}`,
         tenantId,
-        ...userData
+        ...userData,
       });
     }
 
@@ -222,7 +367,7 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
     }, 400);
   };
 
-  const handleSaveRole = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveRole = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     const formData = new FormData(e.currentTarget);
@@ -238,6 +383,50 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
       name: name,
       permissions: selectedRolePerms,
     };
+
+    if (isCloud) {
+      try {
+        const token = localStorage.getItem('gastroflow_token');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        if (editingItem) {
+          const res = await fetch(`/api/tenants/${tenantId}/roles/${editingItem.id}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(roleData),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            alert(data?.error || 'No se pudieron guardar los cambios del rol.');
+            setLoading(false);
+            return;
+          }
+        } else {
+          const res = await fetch(`/api/tenants/${tenantId}/roles`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(roleData),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            alert(data?.error || 'No se pudo crear el rol.');
+            setLoading(false);
+            return;
+          }
+        }
+
+        await refreshData();
+        setIsRoleModalOpen(false);
+        setEditingItem(null);
+        setLoading(false);
+      } catch (error: any) {
+        console.error(error);
+        alert('Error de red al guardar el rol.');
+        setLoading(false);
+      }
+      return;
+    }
 
     if (editingItem) {
       db.update<Role>('roles', editingItem.id, tenantId, roleData);
@@ -658,8 +847,34 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Email Profesional</label>
-                <input name="email" type="email" required defaultValue={editingItem?.email} className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl py-4 px-6 text-slate-100 font-bold focus:border-blue-500/50 outline-none" placeholder="julian@local.com" />
+                <input 
+                  name="email" 
+                  type="email" 
+                  required 
+                  defaultValue={editingItem?.email} 
+                  disabled={!!(editingItem && isCloud)}
+                  className={`w-full bg-slate-800 border-2 border-slate-700 rounded-2xl py-4 px-6 text-slate-100 font-bold focus:border-blue-500/50 outline-none ${editingItem && isCloud ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  placeholder="julian@local.com" 
+                />
+                {editingItem && isCloud && (
+                  <p className="text-[10px] text-slate-500 font-medium mt-1">El email no puede modificarse una vez creado el usuario.</p>
+                )}
               </div>
+              {!editingItem && (
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Contraseña inicial</label>
+                  <input 
+                    name="password" 
+                    type="password" 
+                    minLength={6}
+                    className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl py-4 px-6 text-slate-100 font-bold focus:border-blue-500/50 outline-none" 
+                    placeholder="Define una clave para este integrante" 
+                  />
+                  {isCloud && (
+                    <p className="text-[10px] text-slate-500 font-medium mt-1">Comparte esta contraseña con el integrante; luego podrá cambiarla desde "Olvidé mi contraseña".</p>
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Asignar Perfil de Acceso</label>
                 <select name="roleId" required defaultValue={editingItem?.roleId} className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl py-4 px-6 text-slate-100 font-bold outline-none appearance-none cursor-pointer">

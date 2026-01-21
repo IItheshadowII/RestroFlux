@@ -151,7 +151,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
           {!collapsed && (
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center font-black text-white italic shadow-lg shadow-blue-500/20">G</div>
-              <span className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-100 to-blue-400 italic">GastroFlow</span>
+              <div className="flex flex-col">
+                <span className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-100 to-blue-400 italic">GastroFlow</span>
+                {tenant?.name && (
+                  <span className="text-[11px] font-semibold text-slate-400 leading-tight truncate">
+                    {tenant.name}
+                  </span>
+                )}
+              </div>
             </div>
           )}
           <button 
@@ -204,9 +211,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-20 border-b border-slate-800 flex items-center justify-between px-10 bg-slate-950/40 backdrop-blur-md">
-          <h1 className="text-2xl font-black text-slate-100 tracking-tight italic">
-            {menuItems.find(i => i.id === activePage)?.label || 'Panel'}
-          </h1>
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-black text-slate-100 tracking-tight italic">
+              {menuItems.find(i => i.id === activePage)?.label || 'Panel'}
+            </h1>
+            {tenant?.name && (
+              <span className="text-xs font-medium text-slate-500 mt-1">Negocio: {tenant.name}</span>
+            )}
+          </div>
           <div className="flex items-center gap-4">
              <div className="flex flex-col items-end mr-2">
                 <span className={`text-[10px] font-black uppercase tracking-widest ${
