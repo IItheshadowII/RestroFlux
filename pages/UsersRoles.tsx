@@ -39,10 +39,10 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
   );
 };
 
-export const UsersRolesPage: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null; isCloud?: boolean }> = ({ tenantId, tenant: tenantProp, isCloud = false }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [tenant, setTenant] = useState<Tenant | undefined>(undefined);
+  const [tenant, setTenant] = useState<Tenant | undefined>(tenantProp || undefined);
   const [activeTab, setActiveTab] = useState<'users' | 'roles' | 'ai'>('users');
   const [loading, setLoading] = useState(false);
   
@@ -56,18 +56,52 @@ export const UsersRolesPage: React.FC<{ tenantId: string }> = ({ tenantId }) => 
   const [selectedRolePerms, setSelectedRolePerms] = useState<string[]>([]);
 
   useEffect(() => {
+    // En cloud, el tenant viene de props (API); en local, del DB adapter
+    if (isCloud) {
+      setTenant(tenantProp || undefined);
+    } else {
+      setTenant(db.getTenant(tenantId));
+    }
     refreshData();
-  }, [tenantId]);
+  }, [tenantId, isCloud, tenantProp?.id]);
 
-  const refreshData = () => {
-    // Solo mostramos usuarios activos en la lista, a menos que queramos una vista de "historial"
+  const refreshData = async () => {
+    if (isCloud) {
+      try {
+        const token = localStorage.getItem('gastroflow_token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const [usersRes, rolesRes] = await Promise.all([
+          fetch(`/api/tenants/${tenantId}/users`, { headers }),
+          fetch(`/api/tenants/${tenantId}/roles`, { headers }),
+        ]);
+
+        if (usersRes.ok) {
+          const apiUsers = await usersRes.json();
+          // Solo mostramos usuarios activos
+          setUsers(apiUsers.filter((u: any) => u.isActive !== false));
+        }
+        if (rolesRes.ok) {
+          const apiRoles = await rolesRes.json();
+          setRoles(apiRoles);
+        }
+      } catch (err) {
+        console.error('Error fetching users/roles for tenant:', err);
+      }
+      return;
+    }
+
+    // Modo local (MVP): seguir usando el adaptador in-memory
     setUsers([...db.query<User>('users', tenantId).filter(u => u.isActive)]);
     setRoles([...db.query<Role>('roles', tenantId)]);
     setTenant(db.getTenant(tenantId));
   };
 
-  const canAddMoreUsers = tenant ? db.canAddUser(tenantId) : false;
-  const userLimit = tenant ? PLANS[tenant.plan].limits.users : 0;
+  const activeUsersCount = users.filter(u => u.isActive).length;
+  const effectiveTenant = tenant || tenantProp || undefined;
+  const userLimit = effectiveTenant ? PLANS[effectiveTenant.plan].limits.users : 0;
+  const canAddMoreUsers = userLimit > 0 ? activeUsersCount < userLimit : false;
 
   const handleOpenUserModal = () => {
     if (!canAddMoreUsers) {
