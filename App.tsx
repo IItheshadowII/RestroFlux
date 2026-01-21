@@ -1448,6 +1448,7 @@ const App: React.FC = () => {
   return (
     <Layout
       user={user}
+      tenant={tenant}
       onLogout={handleLogout}
       activePage={currentActivePage}
       setActivePage={setActivePage}

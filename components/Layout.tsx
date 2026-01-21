@@ -27,6 +27,7 @@ import { PLANS } from '../constants';
 interface LayoutProps {
   children: React.ReactNode;
   user: any;
+  tenant: any;
   onLogout: () => void;
   activePage: string;
   setActivePage: (page: string) => void;
@@ -49,12 +50,12 @@ const NavItem = ({ icon: Icon, label, active, onClick, collapsed, alert }: any) 
   </button>
 );
 
-export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, activePage, setActivePage }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout, activePage, setActivePage }) => {
   const [collapsed, setCollapsed] = useState(true);
   
+  // En cloud, los permisos vienen del user (desde API); en local, del rol
   const userRole = db.query<any>('roles', user.tenantId).find(r => r.id === user.roleId);
-  const permissions = userRole?.permissions || [];
-  const tenant = db.getTenant(user.tenantId);
+  const permissions = user.permissions?.length ? user.permissions : (userRole?.permissions || []);
 
   // Determinar si está en TRIAL activo (no expirado)
   const now = Date.now();
