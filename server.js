@@ -1008,6 +1008,82 @@ app.post('/api/admin/tenants', requireGlobalAdmin, async (req, res) => {
   }
 });
 
+// Detalle de tenant con usuarios (admin global)
+app.get('/api/admin/tenants/:tenantId', requireGlobalAdmin, async (req, res) => {
+  const { tenantId } = req.params;
+  try {
+    if (!isUuid(tenantId)) return res.status(400).json({ error: 'tenantId inválido' });
+
+    const tenantRes = await pool.query(
+      `SELECT id, name, slug, plan, subscription_status, trial_ends_at, mercadopago_preapproval_id, next_billing_date, created_at
+       FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    const tenant = tenantRes.rows[0];
+    if (!tenant) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    const usersRes = await pool.query(
+      `SELECT u.id, u.email, u.name, u.is_active, u.last_login, u.created_at,
+              r.name AS role_name
+       FROM users u
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE u.tenant_id = $1
+       ORDER BY u.created_at DESC`,
+      [tenantId]
+    );
+
+    return res.json({
+      ...tenant,
+      subscriptionStatus: tenant.subscription_status,
+      trialEndsAt: tenant.trial_ends_at,
+      nextBillingDate: tenant.next_billing_date,
+      mercadoPagoPreapprovalId: tenant.mercadopago_preapproval_id,
+      users: usersRes.rows,
+    });
+  } catch (error) {
+    console.error('admin tenant detail error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
+// Resumen de todos los tenants con conteo de usuarios (admin global dashboard)
+app.get('/api/admin/dashboard', requireGlobalAdmin, async (_req, res) => {
+  try {
+    const tenantsRes = await pool.query(`
+      SELECT t.id, t.name, t.slug, t.plan, t.subscription_status, t.trial_ends_at,
+             t.mercadopago_preapproval_id, t.next_billing_date, t.created_at,
+             COUNT(u.id)::int AS user_count
+      FROM tenants t
+      LEFT JOIN users u ON u.tenant_id = t.id AND u.is_active = true
+      GROUP BY t.id
+      ORDER BY t.created_at DESC
+    `);
+
+    const totals = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM tenants)::int AS total_tenants,
+        (SELECT COUNT(*) FROM tenants WHERE subscription_status = 'TRIAL')::int AS trial_tenants,
+        (SELECT COUNT(*) FROM tenants WHERE subscription_status = 'ACTIVE')::int AS active_tenants,
+        (SELECT COUNT(*) FROM users WHERE is_active = true)::int AS total_users
+    `);
+
+    return res.json({
+      tenants: tenantsRes.rows.map(t => ({
+        ...t,
+        subscriptionStatus: t.subscription_status,
+        trialEndsAt: t.trial_ends_at,
+        nextBillingDate: t.next_billing_date,
+        mercadoPagoPreapprovalId: t.mercadopago_preapproval_id,
+        userCount: t.user_count,
+      })),
+      totals: totals.rows[0],
+    });
+  } catch (error) {
+    console.error('admin dashboard error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
 // ==========================================
 // TENANT-SCOPED: USERS & ROLES
 // ==========================================

@@ -11,7 +11,7 @@ import { KitchenPage } from './pages/Kitchen';
 import { ReportsPage } from './pages/Reports';
 import { db } from './services/db';
 import { User, Tenant, SubscriptionStatus, PlanTier } from './types';
-import { LogIn, Key, Mail, Store, AlertTriangle, ShieldX } from 'lucide-react';
+import { LogIn, Key, Mail, Store, AlertTriangle, ShieldX, Building2, Users, CreditCard, Clock, ChevronDown, ChevronUp, Loader2, RefreshCw } from 'lucide-react';
 
 type TenantOption = { id: string; name: string; slug?: string };
 
@@ -1026,6 +1026,226 @@ const AccessDenied = () => (
   </div>
 );
 
+// ==========================================
+// ADMIN DASHBOARD (Panel Global Owner)
+// ==========================================
+const AdminDashboardPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(null);
+  const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
+  const [tenantDetail, setTenantDetail] = useState<any>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const fetchDashboard = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('gastroflow_admin_token');
+      const res = await fetch('/api/admin/dashboard', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setData(await res.json());
+    } catch (err) {
+      console.error('Error fetching admin dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTenantDetail = async (tenantId: string) => {
+    if (expandedTenant === tenantId) {
+      setExpandedTenant(null);
+      setTenantDetail(null);
+      return;
+    }
+    setExpandedTenant(tenantId);
+    setLoadingDetail(true);
+    try {
+      const token = localStorage.getItem('gastroflow_admin_token');
+      const res = await fetch(`/api/admin/tenants/${tenantId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setTenantDetail(await res.json());
+    } catch (err) {
+      console.error('Error fetching tenant detail:', err);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboard();
+  }, []);
+
+  const formatDate = (d: string | null) =>
+    d ? new Date(d).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+
+  const getStatusBadge = (status: string, trialEndsAt: string | null) => {
+    const now = Date.now();
+    const isTrialActive = status === 'TRIAL' && (!trialEndsAt || new Date(trialEndsAt).getTime() > now);
+    const trialExpired = status === 'TRIAL' && trialEndsAt && new Date(trialEndsAt).getTime() <= now;
+
+    if (status === 'ACTIVE') return <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded-full">Activo</span>;
+    if (isTrialActive) {
+      const days = trialEndsAt ? Math.ceil((new Date(trialEndsAt).getTime() - now) / (1000 * 60 * 60 * 24)) : '?';
+      return <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded-full">Trial ({days}d)</span>;
+    }
+    if (trialExpired) return <span className="px-2 py-1 bg-orange-500/20 text-orange-400 text-xs font-bold rounded-full">Trial Vencido</span>;
+    if (status === 'PAST_DUE') return <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 text-xs font-bold rounded-full">Pago Pendiente</span>;
+    if (status === 'CANCELED') return <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs font-bold rounded-full">Cancelado</span>;
+    return <span className="px-2 py-1 bg-slate-500/20 text-slate-400 text-xs font-bold rounded-full">{status}</span>;
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
+      <div className="max-w-6xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-black italic">Panel Admin Global</h1>
+            <p className="text-slate-400 text-sm">Gestión de tenants, suscripciones y usuarios</p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={fetchDashboard} className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors">
+              <RefreshCw size={18} />
+            </button>
+            <button onClick={onLogout} className="px-5 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition-colors">
+              Salir
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-20"><Loader2 className="animate-spin" size={32} /></div>
+        ) : data ? (
+          <>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <Building2 size={20} className="text-blue-400" />
+                  <span className="text-slate-400 text-sm font-bold">Total Tenants</span>
+                </div>
+                <p className="text-3xl font-black">{data.totals.total_tenants}</p>
+              </div>
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <Clock size={20} className="text-blue-400" />
+                  <span className="text-slate-400 text-sm font-bold">En Trial</span>
+                </div>
+                <p className="text-3xl font-black text-blue-400">{data.totals.trial_tenants}</p>
+              </div>
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <CreditCard size={20} className="text-emerald-400" />
+                  <span className="text-slate-400 text-sm font-bold">Activos (Pago)</span>
+                </div>
+                <p className="text-3xl font-black text-emerald-400">{data.totals.active_tenants}</p>
+              </div>
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <Users size={20} className="text-purple-400" />
+                  <span className="text-slate-400 text-sm font-bold">Usuarios Totales</span>
+                </div>
+                <p className="text-3xl font-black text-purple-400">{data.totals.total_users}</p>
+              </div>
+            </div>
+
+            {/* Tenants Table */}
+            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-800">
+                <h2 className="text-lg font-black">Todos los Tenants</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-800/50 text-slate-400 text-xs uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-4 text-left">Empresa</th>
+                      <th className="px-6 py-4 text-left">Plan</th>
+                      <th className="px-6 py-4 text-left">Estado</th>
+                      <th className="px-6 py-4 text-center">Usuarios</th>
+                      <th className="px-6 py-4 text-left">Vencimiento</th>
+                      <th className="px-6 py-4 text-left">Creado</th>
+                      <th className="px-6 py-4"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {data.tenants.map((t: any) => (
+                      <React.Fragment key={t.id}>
+                        <tr className="hover:bg-slate-800/30 transition-colors">
+                          <td className="px-6 py-4">
+                            <div>
+                              <p className="font-bold text-white">{t.name}</p>
+                              <p className="text-slate-500 text-xs">{t.slug || t.id.slice(0, 8)}</p>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="px-2 py-1 bg-slate-700 text-slate-300 text-xs font-bold rounded">{t.plan}</span>
+                          </td>
+                          <td className="px-6 py-4">{getStatusBadge(t.subscriptionStatus || t.subscription_status, t.trialEndsAt || t.trial_ends_at)}</td>
+                          <td className="px-6 py-4 text-center font-bold">{t.userCount ?? t.user_count ?? 0}</td>
+                          <td className="px-6 py-4 text-slate-400">
+                            {(t.subscriptionStatus === 'TRIAL' || t.subscription_status === 'TRIAL')
+                              ? formatDate(t.trialEndsAt || t.trial_ends_at)
+                              : formatDate(t.nextBillingDate || t.next_billing_date)}
+                          </td>
+                          <td className="px-6 py-4 text-slate-500">{formatDate(t.created_at)}</td>
+                          <td className="px-6 py-4">
+                            <button
+                              onClick={() => fetchTenantDetail(t.id)}
+                              className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                            >
+                              {expandedTenant === t.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </button>
+                          </td>
+                        </tr>
+                        {expandedTenant === t.id && (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-4 bg-slate-800/20">
+                              {loadingDetail ? (
+                                <div className="flex justify-center py-4"><Loader2 className="animate-spin" size={20} /></div>
+                              ) : tenantDetail ? (
+                                <div className="space-y-3">
+                                  <p className="text-sm font-bold text-slate-300">Usuarios de {tenantDetail.name}:</p>
+                                  {tenantDetail.users && tenantDetail.users.length > 0 ? (
+                                    <div className="grid gap-2">
+                                      {tenantDetail.users.map((u: any) => (
+                                        <div key={u.id} className="flex items-center justify-between bg-slate-900/50 p-3 rounded-xl">
+                                          <div>
+                                            <p className="font-bold text-white">{u.name}</p>
+                                            <p className="text-slate-500 text-xs">{u.email} • {u.role_name || 'Sin rol'}</p>
+                                          </div>
+                                          <div className="text-right text-xs text-slate-500">
+                                            <p>{u.is_active ? '✅ Activo' : '❌ Inactivo'}</p>
+                                            <p>Último login: {u.last_login ? formatDate(u.last_login) : 'Nunca'}</p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-slate-500 text-sm">Sin usuarios registrados</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-slate-500">Error cargando detalle</p>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="text-slate-500">No se pudo cargar el dashboard</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -1175,33 +1395,7 @@ const App: React.FC = () => {
     if (!adminUser) {
       return <AdminLoginPage onLogin={(u) => setAdminUser(u)} />;
     }
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
-        <div className="max-w-5xl mx-auto space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-black italic">Admin Plataforma</h1>
-              <p className="text-slate-400 text-sm">Sesión global (owner). No se mezcla con /app.</p>
-            </div>
-            <button
-              onClick={handleAdminLogout}
-              className="px-5 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold"
-            >
-              Salir
-            </button>
-          </div>
-
-          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6">
-            <p className="text-slate-300 font-bold">Endpoints disponibles:</p>
-            <ul className="text-slate-400 text-sm mt-2 space-y-1">
-              <li>- GET /api/admin/tenants</li>
-              <li>- POST /api/admin/tenants</li>
-            </ul>
-            <p className="text-slate-500 text-xs mt-4">UI de gestión completa la armamos en el siguiente paso si querés.</p>
-          </div>
-        </div>
-      </div>
-    );
+    return <AdminDashboardPage onLogout={handleAdminLogout} />;
   }
 
   if (isAppRegister) {
