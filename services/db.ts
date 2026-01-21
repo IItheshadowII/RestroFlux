@@ -561,7 +561,19 @@ class DBService {
     const tenants = this.getLocalData<Tenant>('tenants');
 
     if (!localStorage.getItem('gastroflow_tenants')) {
-      const demoTenantId = 'demo-123';
+      const generateUuidV4 = () => {
+        // Preferir crypto.randomUUID si está disponible
+        const cryptoObj: any = (globalThis as any).crypto;
+        if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
+        // Fallback UUIDv4 (no criptográficamente perfecto, suficiente para demo local)
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+      };
+
+      const demoTenantId = generateUuidV4();
       const demoTenant: Tenant = {
         id: demoTenantId,
         name: 'Gastro Bar Demo',

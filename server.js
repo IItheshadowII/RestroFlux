@@ -26,42 +26,195 @@ const pool = new Pool({
 });
 
 // Mercado Pago Initialization
-import { MercadoPagoConfig, PreApproval } from 'mercadopago';
+import { MercadoPagoConfig, PreApproval, Payment } from 'mercadopago';
 const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
 const preapproval = new PreApproval(mpClient);
+const payment = new Payment(mpClient);
 
-// Test DB Connection & Ensure Billing Table
-pool.connect(async (err, client, release) => {
-  if (err) {
-    console.error('Error acquiring client', err.stack);
-  } else {
-    console.log('✅ Connected to PostgreSQL database');
+const MP_LOG_PREFIX = '[MP]';
 
-    // Ensure Billing History Table Exists
-    try {
-      await client.query(`
-            CREATE TABLE IF NOT EXISTS billing_history (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-                amount DECIMAL(10,2) NOT NULL,
-                currency VARCHAR(3) DEFAULT 'ARS',
-                status VARCHAR(50) DEFAULT 'paid',
-                payment_id VARCHAR(255),
-                created_at TIMESTAMP DEFAULT NOW(),
-                description VARCHAR(255),
-                invoice_url VARCHAR(500)
-            );
-            CREATE INDEX IF NOT EXISTS idx_billing_tenant ON billing_history(tenant_id);
-            CREATE INDEX IF NOT EXISTS idx_billing_date ON billing_history(created_at DESC);
-        `);
-      console.log('✅ Billing History table verified');
-    } catch (tableErr) {
-      console.error('Error verifying billing table:', tableErr);
-    }
+const isUuid = (value) => {
+  if (typeof value !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+};
 
-    release();
+const safeJson = (value) => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
-});
+};
+
+const withQueryParams = (urlString, params) => {
+  try {
+    const url = new URL(urlString);
+    Object.entries(params).forEach(([key, val]) => {
+      if (val === undefined || val === null || val === '') return;
+      url.searchParams.set(key, String(val));
+    });
+    return url.toString();
+  } catch {
+    // Fallback si viene una URL relativa o inválida
+    const glue = urlString.includes('?') ? '&' : '?';
+    const query = Object.entries(params)
+      .filter(([, val]) => val !== undefined && val !== null && val !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join('&');
+    return query ? `${urlString}${glue}${query}` : urlString;
+  }
+};
+
+const inferPlanIdFromReason = (reason) => {
+  if (typeof reason !== 'string') return 'BASIC';
+  const m = reason.match(/\b(BASIC|PRO|ENTERPRISE)\b/i);
+  return m ? m[1].toUpperCase() : 'BASIC';
+};
+
+const verifyWebhookSignaturePlaceholder = (req) => {
+  // TODO: Implementar verificación real de firma MercadoPago.
+  // Requiere capturar rawBody (bodyParser raw) y validar header de firma.
+  // Por ahora dejamos placeholder para no romper webhooks en producción.
+  const secret = process.env.MP_WEBHOOK_SECRET;
+  if (!secret) return { ok: true, reason: 'MP_WEBHOOK_SECRET no configurado (placeholder)' };
+  return { ok: true, reason: 'Placeholder (TODO firma)' };
+};
+
+const extractWebhookTypeAndId = (req) => {
+  const body = req.body || {};
+  const query = req.query || {};
+
+  const rawType = body.type || query.type || body.topic || query.topic;
+  const type = typeof rawType === 'string' ? rawType : undefined;
+
+  const id =
+    body?.data?.id ||
+    body?.id ||
+    query.data_id ||
+    query['data.id'] ||
+    query.id;
+
+  return {
+    type: typeof type === 'string' ? type : undefined,
+    id: typeof id === 'string' || typeof id === 'number' ? String(id) : undefined,
+  };
+};
+
+const ensureSchema = async () => {
+  const client = await pool.connect();
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+
+    // Tenants: asegurar columnas necesarias
+    await client.query(`
+      ALTER TABLE tenants
+        ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'BASIC',
+        ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'TRIAL',
+        ADD COLUMN IF NOT EXISTS mercadopago_preapproval_id VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS next_billing_date TIMESTAMP;
+    `);
+
+    // Billing history: tabla + columnas requeridas
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS billing_history (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+        amount DECIMAL(10,2) NOT NULL,
+        currency VARCHAR(3) DEFAULT 'ARS',
+        status VARCHAR(50) DEFAULT 'paid',
+        payment_id VARCHAR(255),
+        mp_subscription_id VARCHAR(255),
+        created_at TIMESTAMP DEFAULT NOW(),
+        description VARCHAR(255),
+        invoice_url VARCHAR(500)
+      );
+
+      ALTER TABLE billing_history
+        ADD COLUMN IF NOT EXISTS mp_subscription_id VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+
+      CREATE INDEX IF NOT EXISTS idx_billing_tenant ON billing_history(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_billing_date ON billing_history(created_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS ux_billing_mp_subscription_id ON billing_history(mp_subscription_id);
+    `);
+
+    console.log('✅ DB schema verificado (tenants + billing_history)');
+  } finally {
+    client.release();
+  }
+};
+
+const ensureTenantExists = async (tenantId) => {
+  // En este repo el frontend puede ser demo/localStorage; garantizamos que exista el tenant
+  // para que los updates del webhook/refresh no queden sin efecto.
+  await pool.query(
+    `INSERT INTO tenants (id, name) VALUES ($1, $2)
+     ON CONFLICT (id) DO NOTHING`,
+    [tenantId, `Tenant ${tenantId}`]
+  );
+};
+
+const syncTenantFromPreapproval = async (subscription) => {
+  const status = subscription?.status;
+  const tenantId = subscription?.external_reference;
+  const preapprovalId = subscription?.id;
+  const reason = subscription?.reason || '';
+  const amount = subscription?.auto_recurring?.transaction_amount;
+  const planId = inferPlanIdFromReason(reason);
+
+  if (!isUuid(tenantId)) {
+    console.warn(`${MP_LOG_PREFIX} external_reference inválido; no se puede sincronizar`, {
+      external_reference: tenantId,
+      status,
+      preapprovalId,
+      reason,
+    });
+    return null;
+  }
+
+  await ensureTenantExists(tenantId);
+
+  if (status === 'authorized') {
+    await pool.query(
+      `UPDATE tenants SET
+        plan = $1,
+        subscription_status = 'ACTIVE',
+        mercadopago_preapproval_id = $2,
+        next_billing_date = NOW() + INTERVAL '1 month'
+       WHERE id = $3`,
+      [planId, preapprovalId, tenantId]
+    );
+
+    // Idempotencia: un registro por preapproval autorizado (MP reintenta webhooks)
+    await pool.query(
+      `INSERT INTO billing_history (tenant_id, amount, status, payment_id, mp_subscription_id, description, created_at)
+       VALUES ($1, $2, 'paid', $3, $4, $5, NOW())
+       ON CONFLICT (mp_subscription_id) DO NOTHING`,
+      [tenantId, Number(amount ?? 0), null, preapprovalId, reason]
+    );
+  } else if (status === 'cancelled') {
+    await pool.query(
+      `UPDATE tenants SET
+        subscription_status = 'CANCELED'
+       WHERE id = $1`,
+      [tenantId]
+    );
+  } else {
+    console.log(`${MP_LOG_PREFIX} Evento ignorado por status`, { status, tenantId, preapprovalId });
+  }
+
+  const tenantResult = await pool.query(
+    `SELECT id, name, slug, plan, subscription_status, mercadopago_preapproval_id, next_billing_date, created_at
+     FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
+  return tenantResult.rows[0] || null;
+};
+
+// Test DB Connection & Ensure Schema
+ensureSchema()
+  .then(() => console.log('✅ Connected to PostgreSQL database'))
+  .catch((err) => console.error('Error verifying DB schema:', err));
 
 // --- VALID RESOURCES (Security) ---
 const VALID_TABLES = ['tenants', 'users', 'roles', 'products', 'categories', 'tables', 'orders', 'order_items', 'shifts', 'audit_logs', 'billing_history'];
@@ -78,6 +231,26 @@ app.post('/api/subscriptions', async (req, res) => {
   console.log('Data:', { tenantId, planId, price, email, backUrl });
 
   try {
+    if (!isUuid(tenantId)) {
+      return res.status(400).json({ error: 'tenantId inválido (se requiere UUID)' });
+    }
+    if (!planId || typeof planId !== 'string') {
+      return res.status(400).json({ error: 'planId requerido' });
+    }
+    if (typeof price !== 'number' || Number.isNaN(price) || price <= 0) {
+      return res.status(400).json({ error: 'price inválido' });
+    }
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'email requerido' });
+    }
+
+    await ensureTenantExists(tenantId);
+
+    const computedBackUrl = withQueryParams(
+      backUrl || 'https://gastroflow.accesoit.com.ar/billing',
+      { tenantId, mp: 1 }
+    );
+
     const response = await preapproval.create({
       body: {
         reason: `Suscripción GastroFlow ${planId}`,
@@ -87,14 +260,14 @@ app.post('/api/subscriptions', async (req, res) => {
           transaction_amount: price,
           currency_id: "ARS"
         },
-        back_url: backUrl || "https://gastroflow.accesoit.com.ar/billing",
-        payer_email: email || "test_user_123456@testuser.com",
-        external_reference: tenantId,
+        back_url: computedBackUrl,
+        payer_email: email,
+        external_reference: tenantId, // IMPORTANTE: tenant UUID real
         status: "pending"
       }
     });
 
-    res.json({ init_point: response.init_point, id: response.id });
+    res.json({ init_point: response.init_point, preapproval_id: response.id, id: response.id });
   } catch (error) {
     console.error('Error creating subscription:', error);
     res.status(500).json({ error: 'Failed to create subscription', details: error.message });
@@ -102,46 +275,105 @@ app.post('/api/subscriptions', async (req, res) => {
 });
 
 app.post('/api/webhooks/mercadopago', async (req, res) => {
-  const { type, data } = req.body;
-  const { id } = data || {};
+  const extracted = extractWebhookTypeAndId(req);
+  const signatureCheck = verifyWebhookSignaturePlaceholder(req);
 
-  console.log(`[Webhook] Received ${type} for ID: ${id}`);
+  console.log(`${MP_LOG_PREFIX} Webhook recibido`, {
+    type: extracted.type,
+    id: extracted.id,
+    signature: signatureCheck.reason,
+    query: req.query,
+    body: req.body,
+  });
+
+  // Reglas: responder 200 siempre (evita reintentos infinitos), pero loguear problemas.
+  if (!extracted.type || !extracted.id) {
+    console.warn(`${MP_LOG_PREFIX} Webhook sin type/id. Se responde 200.`, {
+      type: extracted.type,
+      id: extracted.id,
+      query: safeJson(req.query),
+      body: safeJson(req.body),
+    });
+    return res.sendStatus(200);
+  }
+
+  const type = extracted.type;
+  const id = extracted.id;
 
   try {
-    if (type === 'subscription_preapproval') {
-      // Fetch subscription details from Mercado Pago
+    if (type === 'subscription_preapproval' || type === 'preapproval') {
       const subscription = await preapproval.get({ id });
-
-      if (subscription && subscription.status === 'authorized') {
-        const tenantId = subscription.external_reference;
-        const planName = subscription.reason.replace('Suscripción GastroFlow ', ''); // e.g., 'PRO'
-        const planId = planName === 'Básico' ? 'BASIC' : planName; // Map display name to ID if needed, mainly it matches logic
-
-        console.log(`[Webhook] Activating subscription for Tenant: ${tenantId}, Plan: ${planName}`);
-
-        // 1. Update Tenant
-        await pool.query(
-          `UPDATE tenants SET 
-                plan = $1, 
-                subscription_status = 'ACTIVE', 
-                mercadopago_preapproval_id = $2, 
-                next_billing_date = NOW() + INTERVAL '1 month' 
-               WHERE id = $3`,
-          [planName, id, tenantId]
-        );
-
-        // 2. Record Billing History
-        await pool.query(
-          `INSERT INTO billing_history (tenant_id, amount, status, payment_id, description, created_at)
-               VALUES ($1, $2, 'paid', $3, $4, NOW())`,
-          [tenantId, subscription.auto_recurring.transaction_amount, id, subscription.reason]
-        );
-      }
+      await syncTenantFromPreapproval(subscription);
+      return res.sendStatus(200);
     }
-    res.sendStatus(200);
+
+    if (type === 'payment') {
+      const paymentData = await payment.get({ id });
+      const preapprovalId = paymentData?.preapproval_id || paymentData?.metadata?.preapproval_id;
+
+      if (!preapprovalId) {
+        console.warn(`${MP_LOG_PREFIX} Payment sin preapproval_id; no se puede reconciliar`, {
+          paymentId: id,
+          paymentStatus: paymentData?.status,
+        });
+        return res.sendStatus(200);
+      }
+
+      const subscription = await preapproval.get({ id: String(preapprovalId) });
+      await syncTenantFromPreapproval(subscription);
+      return res.sendStatus(200);
+    }
+
+    console.log(`${MP_LOG_PREFIX} Webhook type no manejado`, { type, id });
+    return res.sendStatus(200);
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.sendStatus(500);
+    console.error(`${MP_LOG_PREFIX} Error en webhook (se responde 200 igualmente)`, error);
+    return res.sendStatus(200);
+  }
+});
+
+// Forzar sincronización al volver de MP
+app.post('/api/subscriptions/refresh', async (req, res) => {
+  const { tenantId, preapprovalId } = req.body || {};
+
+  try {
+    const resolvedTenantId = tenantId && typeof tenantId === 'string' ? tenantId : undefined;
+    const resolvedPreapprovalId = preapprovalId && typeof preapprovalId === 'string' ? preapprovalId : undefined;
+
+    if (!resolvedPreapprovalId && !resolvedTenantId) {
+      return res.status(400).json({ error: 'Se requiere tenantId y/o preapprovalId' });
+    }
+    if (resolvedTenantId && !isUuid(resolvedTenantId)) {
+      return res.status(400).json({ error: 'tenantId inválido (UUID requerido)' });
+    }
+
+    let finalPreapprovalId = resolvedPreapprovalId;
+    if (!finalPreapprovalId && resolvedTenantId) {
+      const r = await pool.query(
+        `SELECT mercadopago_preapproval_id FROM tenants WHERE id = $1`,
+        [resolvedTenantId]
+      );
+      finalPreapprovalId = r.rows[0]?.mercadopago_preapproval_id || undefined;
+    }
+
+    if (!finalPreapprovalId) {
+      console.warn(`${MP_LOG_PREFIX} Refresh sin preapprovalId resoluble`, { tenantId: resolvedTenantId });
+      const tenantRow = resolvedTenantId
+        ? (await pool.query(
+          `SELECT id, name, slug, plan, subscription_status, mercadopago_preapproval_id, next_billing_date, created_at
+           FROM tenants WHERE id = $1`,
+          [resolvedTenantId]
+        )).rows[0]
+        : null;
+      return res.json({ ok: true, tenant: tenantRow });
+    }
+
+    const subscription = await preapproval.get({ id: String(finalPreapprovalId) });
+    const tenantRow = await syncTenantFromPreapproval(subscription);
+    return res.json({ ok: true, tenant: tenantRow });
+  } catch (error) {
+    console.error(`${MP_LOG_PREFIX} Error en refresh`, error);
+    return res.status(500).json({ error: 'Refresh failed', details: error.message });
   }
 });
 
@@ -349,6 +581,38 @@ app.post('/api/license/verify', async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// Obtener un tenant por ID (para refrescar estado en frontend)
+app.get('/api/tenants/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (!isUuid(id)) return res.status(400).json({ error: 'tenantId inválido (UUID requerido)' });
+
+    const result = await pool.query(
+      `SELECT id, name, slug, plan, subscription_status, mercadopago_preapproval_id, next_billing_date, created_at, settings
+       FROM tenants WHERE id = $1`,
+      [id]
+    );
+
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+
+    return res.json({
+      id: row.id,
+      name: row.name,
+      slug: row.slug || '',
+      plan: row.plan,
+      subscriptionStatus: row.subscription_status,
+      mercadoPagoPreapprovalId: row.mercadopago_preapproval_id || undefined,
+      nextBillingDate: row.next_billing_date ? new Date(row.next_billing_date).toISOString() : undefined,
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+      settings: row.settings || {},
+    });
+  } catch (error) {
+    console.error('Error fetching tenant:', error);
+    return res.status(500).json({ error: 'Failed to fetch tenant' });
   }
 });
 

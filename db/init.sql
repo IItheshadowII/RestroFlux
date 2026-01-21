@@ -148,7 +148,27 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 -- ====================================
--- 7. INDEXES (Performance)
+-- 7. BILLING HISTORY (SaaS)
+-- ====================================
+CREATE TABLE IF NOT EXISTS billing_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    amount DECIMAL(10,2) NOT NULL,
+    currency VARCHAR(3) DEFAULT 'ARS',
+    status VARCHAR(50) DEFAULT 'paid', -- 'paid', 'pending', 'failed'
+    payment_id VARCHAR(255),
+    mp_subscription_id VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    description VARCHAR(255),
+    invoice_url VARCHAR(500)
+);
+
+CREATE INDEX IF NOT EXISTS idx_billing_tenant ON billing_history(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_billing_date ON billing_history(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_billing_mp_subscription_id ON billing_history(mp_subscription_id);
+
+-- ====================================
+-- 8. INDEXES (Performance)
 -- ====================================
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

@@ -19,13 +19,15 @@ const createBillingHistoryTable = async () => {
         currency VARCHAR(3) DEFAULT 'ARS',
         status VARCHAR(50) DEFAULT 'paid', -- 'paid', 'pending', 'failed'
         payment_id VARCHAR(255), -- Mercado Pago Payment ID
-        date TIMESTAMP DEFAULT NOW(),
+        mp_subscription_id VARCHAR(255), -- Mercado Pago Preapproval ID (idempotencia)
+        created_at TIMESTAMP DEFAULT NOW(),
         description VARCHAR(255),
         invoice_url VARCHAR(500)
     );
 
     CREATE INDEX IF NOT EXISTS idx_billing_tenant ON billing_history(tenant_id);
-    CREATE INDEX IF NOT EXISTS idx_billing_date ON billing_history(date DESC);
+    CREATE INDEX IF NOT EXISTS idx_billing_date ON billing_history(created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_billing_mp_subscription_id ON billing_history(mp_subscription_id);
     `;
 
     try {

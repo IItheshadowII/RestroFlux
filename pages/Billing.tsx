@@ -15,17 +15,68 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
   const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'processing' | 'success'>('idle');
   const [reconciliationNotice, setReconciliationNotice] = useState(false);
   const [billingHistory, setBillingHistory] = React.useState<any[]>([]);
+  const [syncingFromMP, setSyncingFromMP] = React.useState(false);
+
+  const fetchBillingHistory = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/billing_history?tenantId=${tenant.id}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setBillingHistory(data);
+    } catch (err) {
+      console.error('Error fetching billing history:', err);
+    }
+  }, [tenant.id]);
 
   React.useEffect(() => {
-    fetch(`/api/billing_history?tenantId=${tenant.id}`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setBillingHistory(data);
-        }
-      })
-      .catch(err => console.error('Error fetching billing history:', err));
-  }, [tenant.id]);
+    fetchBillingHistory();
+  }, [fetchBillingHistory]);
+
+  React.useEffect(() => {
+    // Al volver de MercadoPago, forzar refresh backend.
+    const params = new URLSearchParams(window.location.search);
+    const mp = params.get('mp');
+    const preapprovalId = params.get('preapproval_id') || params.get('preapprovalId');
+    const tenantIdFromQuery = params.get('tenantId');
+    const shouldRefresh = mp === '1' || !!preapprovalId;
+    if (!shouldRefresh) return;
+
+    let cancelled = false;
+    (async () => {
+      setSyncingFromMP(true);
+      try {
+        await fetch('/api/subscriptions/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenantId: tenantIdFromQuery || tenant.id,
+            preapprovalId: preapprovalId || undefined,
+          })
+        });
+
+        if (cancelled) return;
+
+        // Trigger parent refresh (App ignora el arg si no lo usa)
+        onUpdate(tenant);
+        await fetchBillingHistory();
+
+        // Evita refresh en loop
+        const url = new URL(window.location.href);
+        url.searchParams.delete('mp');
+        url.searchParams.delete('tenantId');
+        url.searchParams.delete('preapproval_id');
+        url.searchParams.delete('preapprovalId');
+        window.history.replaceState({}, document.title, url.toString());
+      } catch (err) {
+        console.error('Error refreshing subscription after MP:', err);
+      } finally {
+        if (!cancelled) setSyncingFromMP(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenant.id, onUpdate, fetchBillingHistory, tenant]);
 
   const handleSubscribeClick = (plan: any) => {
     setShowCheckout({ planId: plan.id, name: plan.name, price: plan.price });
@@ -99,6 +150,12 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
 
   return (
     <div className="max-w-6xl mx-auto space-y-12 animate-in fade-in duration-700">
+      {syncingFromMP && (
+        <section className="bg-blue-600/10 border border-blue-500/20 rounded-[2rem] p-6 text-blue-300 font-bold flex items-center gap-3">
+          <Loader2 className="animate-spin" size={18} />
+          Sincronizando tu suscripción con Mercado Pago…
+        </section>
+      )}
       {/* Header Stat Card */}
       <section className="bg-slate-900/60 border border-slate-800/80 rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden backdrop-blur-xl">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full blur-[100px] -mr-40 -mt-40"></div>

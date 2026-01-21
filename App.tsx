@@ -117,12 +117,31 @@ const App: React.FC = () => {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [activePage, setActivePage] = useState('tables');
 
+  const isCloud = (import.meta as any).env.VITE_APP_MODE === 'CLOUD' ||
+    (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1'));
+
+  const fetchTenantFromApi = async (tenantId: string): Promise<Tenant | null> => {
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('Error fetching tenant from API:', err);
+      return null;
+    }
+  };
+
   useEffect(() => {
     const stored = localStorage.getItem('gastroflow_current_user');
     if (stored) {
       const u = JSON.parse(stored);
       setUser(u);
-      setTenant(db.getTenant(u.tenantId) || null);
+      // Intentar cargar desde backend en CLOUD, fallback a local
+      if (isCloud) {
+        fetchTenantFromApi(u.tenantId).then((t) => setTenant(t || db.getTenant(u.tenantId) || null));
+      } else {
+        setTenant(db.getTenant(u.tenantId) || null);
+      }
     }
 
     // Global event listener for tab switching
@@ -136,7 +155,11 @@ const App: React.FC = () => {
   const handleLogin = (u: User) => {
     setUser(u);
     localStorage.setItem('gastroflow_current_user', JSON.stringify(u));
-    setTenant(db.getTenant(u.tenantId) || null);
+    if (isCloud) {
+      fetchTenantFromApi(u.tenantId).then((t) => setTenant(t || db.getTenant(u.tenantId) || null));
+    } else {
+      setTenant(db.getTenant(u.tenantId) || null);
+    }
   };
 
   const handleLogout = () => {
@@ -146,9 +169,15 @@ const App: React.FC = () => {
   };
 
   const refreshTenantData = () => {
-    if (user) {
-      setTenant(db.getTenant(user.tenantId) || null);
+    if (!user) return;
+    if (isCloud) {
+      fetchTenantFromApi(user.tenantId).then((t) => {
+        if (t) setTenant(t);
+        else setTenant(db.getTenant(user.tenantId) || null);
+      });
+      return;
     }
+    setTenant(db.getTenant(user.tenantId) || null);
   };
 
   if (!user || !tenant) {
