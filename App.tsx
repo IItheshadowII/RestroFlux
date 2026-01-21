@@ -13,23 +13,72 @@ import { db } from './services/db';
 import { User, Tenant, SubscriptionStatus, PlanTier } from './types';
 import { LogIn, Key, Mail, Store, AlertTriangle, ShieldX } from 'lucide-react';
 
-const LoginPage = ({ onLogin }: { onLogin: (u: User) => void }) => {
+const LoginPage = ({ onLogin, isCloud }: { onLogin: (u: User) => void; isCloud: boolean }) => {
   const [email, setEmail] = useState('admin@demo.com');
   const [password, setPassword] = useState('password123');
+  const [tenantId, setTenantId] = useState(() => localStorage.getItem('gastroflow_last_tenant_id') || '');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
-    setTimeout(() => {
+
+    try {
+      if (isCloud) {
+        if (!tenantId) {
+          setError('Tenant ID requerido (UUID)');
+          return;
+        }
+
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, tenantId })
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok || !data?.token || !data?.user) {
+          setError(data?.error || 'Credenciales inválidas');
+          return;
+        }
+
+        if (data.scope !== 'tenant') {
+          setError('Este frontend actualmente requiere login de tenant (no global).');
+          return;
+        }
+
+        localStorage.setItem('gastroflow_token', data.token);
+        localStorage.setItem('gastroflow_last_tenant_id', tenantId);
+
+        const u: User = {
+          id: data.user.id,
+          tenantId: data.user.tenantId,
+          email: data.user.email,
+          name: data.user.name,
+          roleId: data.user.roleId,
+          isActive: true,
+          permissions: Array.isArray(data.user.permissions) ? data.user.permissions : []
+        };
+
+        onLogin(u);
+        return;
+      }
+
+      // LOCAL mode
       const user = db.getUserByEmail(email);
       if (user) {
         onLogin(user);
       } else {
-        alert('Credenciales inválidas');
+        setError('Credenciales inválidas');
       }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err?.message || 'Error de conexión');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -43,6 +92,23 @@ const LoginPage = ({ onLogin }: { onLogin: (u: User) => void }) => {
 
         <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl shadow-2xl">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {isCloud && (
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Tenant ID</label>
+                <div className="relative">
+                  <Store className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input
+                    type="text"
+                    value={tenantId}
+                    onChange={(e) => setTenantId(e.target.value)}
+                    className="w-full bg-slate-800/50 border border-slate-700 text-white rounded-2xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
+                    placeholder="UUID del tenant"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Email</label>
               <div className="relative">
@@ -56,6 +122,12 @@ const LoginPage = ({ onLogin }: { onLogin: (u: User) => void }) => {
                 />
               </div>
             </div>
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-300 rounded-2xl p-4 text-sm font-bold">
+                {error}
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
@@ -122,7 +194,12 @@ const App: React.FC = () => {
 
   const fetchTenantFromApi = async (tenantId: string): Promise<Tenant | null> => {
     try {
-      const res = await fetch(`/api/tenants/${tenantId}`);
+      const token = localStorage.getItem('gastroflow_token');
+      const res = await fetch(`/api/tenants/${tenantId}`, {
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        }
+      });
       if (!res.ok) return null;
       return await res.json();
     } catch (err) {
@@ -131,17 +208,54 @@ const App: React.FC = () => {
     }
   };
 
+  const fetchMeFromApi = async (): Promise<User | null> => {
+    try {
+      const token = localStorage.getItem('gastroflow_token');
+      if (!token) return null;
+      const res = await fetch('/api/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || data.scope !== 'tenant' || !data.user) return null;
+
+      const u: User = {
+        id: data.user.id,
+        tenantId: data.user.tenantId,
+        email: data.user.email,
+        name: data.user.name,
+        roleId: data.user.roleId,
+        isActive: true,
+        permissions: Array.isArray(data.user.permissions) ? data.user.permissions : []
+      };
+      return u;
+    } catch (err) {
+      console.error('Error fetching /api/me:', err);
+      return null;
+    }
+  };
+
   useEffect(() => {
     const stored = localStorage.getItem('gastroflow_current_user');
-    if (stored) {
+
+    if (isCloud) {
+      // En cloud, la fuente de verdad es el token. Si existe, refrescamos /me.
+      fetchMeFromApi().then((me) => {
+        if (me) {
+          setUser(me);
+          localStorage.setItem('gastroflow_current_user', JSON.stringify(me));
+          fetchTenantFromApi(me.tenantId).then((t) => setTenant(t || null));
+        } else if (stored) {
+          // Fallback (por compat): si hay user pero token inválido/ausente, forzar re-login
+          setUser(null);
+          setTenant(null);
+          localStorage.removeItem('gastroflow_current_user');
+        }
+      });
+    } else if (stored) {
       const u = JSON.parse(stored);
       setUser(u);
-      // Intentar cargar desde backend en CLOUD, fallback a local
-      if (isCloud) {
-        fetchTenantFromApi(u.tenantId).then((t) => setTenant(t || db.getTenant(u.tenantId) || null));
-      } else {
-        setTenant(db.getTenant(u.tenantId) || null);
-      }
+      setTenant(db.getTenant(u.tenantId) || null);
     }
 
     // Global event listener for tab switching
@@ -166,6 +280,7 @@ const App: React.FC = () => {
     setUser(null);
     setTenant(null);
     localStorage.removeItem('gastroflow_current_user');
+    localStorage.removeItem('gastroflow_token');
   };
 
   const refreshTenantData = () => {
@@ -181,7 +296,7 @@ const App: React.FC = () => {
   };
 
   if (!user || !tenant) {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage onLogin={handleLogin} isCloud={isCloud} />;
   }
 
   // Multi-tenant Billing Lock
@@ -190,7 +305,7 @@ const App: React.FC = () => {
 
   // Lógica de permisos por rol
   const userRole = db.query<any>('roles', user.tenantId).find(r => r.id === user.roleId);
-  const permissions = userRole?.permissions || [];
+  const permissions = user.permissions || userRole?.permissions || [];
 
   const pagePermissionMap: Record<string, string> = {
     'dashboard': 'dashboard.view',

@@ -340,40 +340,7 @@ const getTenantAdminRoleId = async (tenantId) => {
 // AUTH ENDPOINTS
 // ==========================================
 
-// Bootstrap del primer admin global (protegido por token de bootstrap)
-app.post('/api/auth/bootstrap-global-admin', async (req, res) => {
-  const { bootstrapToken, email, password, name } = req.body || {};
-  try {
-    if (!GLOBAL_ADMIN_BOOTSTRAP_TOKEN) {
-      return res.status(400).json({ error: 'GLOBAL_ADMIN_BOOTSTRAP_TOKEN no configurado' });
-    }
-    if (bootstrapToken !== GLOBAL_ADMIN_BOOTSTRAP_TOKEN) {
-      return res.status(403).json({ error: 'bootstrapToken inválido' });
-    }
-
-    const count = await pool.query('SELECT COUNT(*)::int AS c FROM global_admins');
-    if ((count.rows[0]?.c || 0) > 0) {
-      return res.status(400).json({ error: 'Ya existe un admin global' });
-    }
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'email/password/name requeridos' });
-    }
-
-    const passwordHash = await hashPassword(password);
-    const created = await pool.query(
-      `INSERT INTO global_admins (email, password_hash, name)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, name`,
-      [email, passwordHash, name]
-    );
-
-    const token = signToken({ scope: 'global', sub: created.rows[0].id, email: created.rows[0].email });
-    return res.json({ ok: true, token, admin: created.rows[0] });
-  } catch (error) {
-    console.error('bootstrap-global-admin error:', error);
-    return res.status(500).json({ error: 'bootstrap failed' });
-  }
-});
+// Bootstrap global admin: deshabilitado por seguridad (usar migración/seed manual).
 
 // Login (global o tenant)
 app.post('/api/auth/login', async (req, res) => {

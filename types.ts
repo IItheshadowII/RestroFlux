@@ -38,6 +38,7 @@ export interface User {
   roleId: string;
   isActive: boolean;
   lastLogin?: string;
+  permissions?: string[];
 }
 
 export interface Role {

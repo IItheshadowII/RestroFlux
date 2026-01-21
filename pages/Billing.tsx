@@ -19,8 +19,7 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
 
   const fetchBillingHistory = React.useCallback(async () => {
     try {
-      const res = await fetch(`/api/billing_history?tenantId=${tenant.id}`);
-      const data = await res.json();
+      const data = await db.queryAsync<any>('billing_history', tenant.id);
       if (Array.isArray(data)) setBillingHistory(data);
     } catch (err) {
       console.error('Error fetching billing history:', err);
