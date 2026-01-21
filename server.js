@@ -266,6 +266,12 @@ const requireGlobalAdmin = (req, res, next) => {
   return next();
 };
 
+const requireTenantUser = (req, res, next) => {
+  if (!req.auth) return res.status(401).json({ error: 'Auth requerida' });
+  if (req.auth.scope !== 'tenant') return res.status(403).json({ error: 'Solo usuario tenant' });
+  return next();
+};
+
 const requireTenantAccess = (req, res, next) => {
   const { tenantId } = req.params;
   if (!req.auth) return res.status(401).json({ error: 'Auth requerida' });
@@ -342,50 +348,126 @@ const getTenantAdminRoleId = async (tenantId) => {
 
 // Bootstrap global admin: deshabilitado por seguridad (usar migración/seed manual).
 
-// Login (global o tenant)
-app.post('/api/auth/login', async (req, res) => {
+// Deprecated (no mezclar sesiones): usar /api/admin/auth/login o /api/app/auth/login
+app.post('/api/auth/login', (_req, res) => {
+  return res.status(410).json({
+    error: 'Endpoint deprecated. Usar /api/admin/auth/login (owner) o /api/app/auth/login (clientes).'
+  });
+});
+
+// ============ ADMIN (GLOBAL OWNER) ============
+app.post('/api/admin/auth/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  try {
+    if (!email || !password) return res.status(400).json({ error: 'email/password requeridos' });
+
+    const r = await pool.query(
+      `SELECT id, email, password_hash, name, is_active FROM global_admins WHERE email = $1 LIMIT 1`,
+      [email]
+    );
+    const admin = r.rows[0];
+    if (!admin || !admin.is_active) return res.status(401).json({ error: 'Credenciales inválidas' });
+
+    const ok = await verifyPassword(password, admin.password_hash);
+    if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
+
+    await pool.query('UPDATE global_admins SET last_login = NOW() WHERE id = $1', [admin.id]);
+    const token = signToken({ scope: 'global', sub: admin.id, email: admin.email });
+    return res.json({ ok: true, token, scope: 'global', user: { id: admin.id, email: admin.email, name: admin.name } });
+  } catch (error) {
+    console.error('admin login error:', error);
+    return res.status(500).json({ error: 'login failed' });
+  }
+});
+
+app.get('/api/admin/me', requireGlobalAdmin, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT id, email, name FROM global_admins WHERE id = $1', [req.auth.sub]);
+    return res.json({ scope: 'global', user: r.rows[0] || null });
+  } catch (error) {
+    console.error('admin me error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
+// ============ APP (TENANT CLIENTS) ============
+app.post('/api/app/auth/login', async (req, res) => {
   const { email, password, tenantId } = req.body || {};
   try {
     if (!email || !password) return res.status(400).json({ error: 'email/password requeridos' });
 
-    // Global login si no hay tenantId
-    if (!tenantId) {
+    // Si viene tenantId (ej: selector), autenticamos directo.
+    if (tenantId) {
+      if (!isUuid(tenantId)) return res.status(400).json({ error: 'tenantId inválido (UUID requerido)' });
       const r = await pool.query(
-        `SELECT id, email, password_hash, name, is_active FROM global_admins WHERE email = $1 LIMIT 1`,
-        [email]
+        `SELECT u.id, u.email, u.password_hash, u.name, u.is_active, u.role_id,
+                COALESCE(r.permissions, '{}'::text[]) AS permissions
+         FROM users u
+         LEFT JOIN roles r ON r.id = u.role_id
+         WHERE u.tenant_id = $1 AND u.email = $2
+         LIMIT 1`,
+        [tenantId, email]
       );
-      const admin = r.rows[0];
-      if (!admin || !admin.is_active) return res.status(401).json({ error: 'Credenciales inválidas' });
-      const ok = await verifyPassword(password, admin.password_hash);
+      const user = r.rows[0];
+      if (!user || !user.is_active) return res.status(401).json({ error: 'Credenciales inválidas' });
+      const ok = await verifyPassword(password, user.password_hash);
       if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-      await pool.query('UPDATE global_admins SET last_login = NOW() WHERE id = $1', [admin.id]);
-      const token = signToken({ scope: 'global', sub: admin.id, email: admin.email });
-      return res.json({ ok: true, token, scope: 'global', user: { id: admin.id, email: admin.email, name: admin.name } });
+      await pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+      const token = signToken({
+        scope: 'tenant',
+        sub: user.id,
+        tenantId,
+        roleId: user.role_id,
+        permissions: user.permissions,
+        email: user.email,
+      });
+      return res.json({
+        ok: true,
+        token,
+        scope: 'tenant',
+        user: { id: user.id, tenantId, email: user.email, name: user.name, roleId: user.role_id, permissions: user.permissions }
+      });
     }
 
-    if (!isUuid(tenantId)) return res.status(400).json({ error: 'tenantId inválido (UUID requerido)' });
-
-    const r = await pool.query(
-      `SELECT u.id, u.email, u.password_hash, u.name, u.is_active, u.role_id,
-              COALESCE(r.permissions, '{}'::text[]) AS permissions
+    // Resolver tenant automáticamente por email+password.
+    const candidatesRes = await pool.query(
+      `SELECT u.id, u.tenant_id, u.email, u.password_hash, u.name, u.is_active, u.role_id,
+              COALESCE(r.permissions, '{}'::text[]) AS permissions,
+              t.name AS tenant_name, t.slug AS tenant_slug
        FROM users u
+       JOIN tenants t ON t.id = u.tenant_id
        LEFT JOIN roles r ON r.id = u.role_id
-       WHERE u.tenant_id = $1 AND u.email = $2
-       LIMIT 1`,
-      [tenantId, email]
+       WHERE u.email = $1`,
+      [email]
     );
 
-    const user = r.rows[0];
-    if (!user || !user.is_active) return res.status(401).json({ error: 'Credenciales inválidas' });
-    const ok = await verifyPassword(password, user.password_hash);
-    if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
+    const candidates = (candidatesRes.rows || []).filter((u) => u && u.is_active);
+    if (candidates.length === 0) return res.status(401).json({ error: 'Credenciales inválidas' });
 
+    const matches = [];
+    for (const u of candidates) {
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await verifyPassword(password, u.password_hash);
+      if (ok) matches.push(u);
+    }
+    if (matches.length === 0) return res.status(401).json({ error: 'Credenciales inválidas' });
+
+    if (matches.length > 1) {
+      return res.status(409).json({
+        error: 'El email existe en múltiples empresas. Seleccioná una para continuar.',
+        code: 'MULTI_TENANT_EMAIL',
+        tenants: matches.map((m) => ({ id: m.tenant_id, name: m.tenant_name, slug: m.tenant_slug || '' })),
+      });
+    }
+
+    const user = matches[0];
+    const resolvedTenantId = user.tenant_id;
     await pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
     const token = signToken({
       scope: 'tenant',
       sub: user.id,
-      tenantId,
+      tenantId: resolvedTenantId,
       roleId: user.role_id,
       permissions: user.permissions,
       email: user.email,
@@ -395,11 +477,32 @@ app.post('/api/auth/login', async (req, res) => {
       ok: true,
       token,
       scope: 'tenant',
-      user: { id: user.id, tenantId, email: user.email, name: user.name, roleId: user.role_id, permissions: user.permissions }
+      user: { id: user.id, tenantId: resolvedTenantId, email: user.email, name: user.name, roleId: user.role_id, permissions: user.permissions }
     });
   } catch (error) {
-    console.error('login error:', error);
+    console.error('app login error:', error);
     return res.status(500).json({ error: 'login failed' });
+  }
+});
+
+app.get('/api/app/me', requireTenantUser, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT u.id, u.tenant_id, u.email, u.name, u.role_id,
+              COALESCE(r.permissions, '{}'::text[]) AS permissions
+       FROM users u
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE u.id = $1`,
+      [req.auth.sub]
+    );
+    const u = r.rows[0];
+    return res.json({
+      scope: 'tenant',
+      user: u ? { id: u.id, tenantId: u.tenant_id, email: u.email, name: u.name, roleId: u.role_id, permissions: u.permissions } : null
+    });
+  } catch (error) {
+    console.error('app me error:', error);
+    return res.status(500).json({ error: 'failed' });
   }
 });
 
@@ -705,12 +808,20 @@ const resolveTenantIdForRequest = (req) => {
 
 // --- MERCADO PAGO ROUTES ---
 
-app.post('/api/subscriptions', async (req, res) => {
+app.post('/api/subscriptions', requireAuth, async (req, res) => {
   const { tenantId, planId, price, email, backUrl } = req.body;
   console.log('--- NEW SUBSCRIPTION REQUEST ---');
   console.log('Data:', { tenantId, planId, price, email, backUrl });
 
   try {
+    // Clientes nunca son global admins: este endpoint es de la app tenant.
+    if (req.auth?.scope !== 'tenant') {
+      return res.status(403).json({ error: 'Solo usuarios tenant pueden iniciar suscripción' });
+    }
+    if (tenantId && req.auth.tenantId !== tenantId) {
+      return res.status(403).json({ error: 'tenantId no coincide con tu sesión' });
+    }
+
     if (!isUuid(tenantId)) {
       return res.status(400).json({ error: 'tenantId inválido (se requiere UUID)' });
     }
@@ -725,6 +836,20 @@ app.post('/api/subscriptions', async (req, res) => {
     }
 
     await ensureTenantExists(tenantId);
+
+    // Si el cliente paga, se convierte en Tenant Admin dentro de su tenant.
+    try {
+      await seedDefaultRolesForTenant(tenantId);
+      const adminRoleId = await getTenantAdminRoleId(tenantId);
+      if (adminRoleId) {
+        await pool.query(
+          `UPDATE users SET role_id = $1 WHERE id = $2 AND tenant_id = $3`,
+          [adminRoleId, req.auth.sub, tenantId]
+        );
+      }
+    } catch (e) {
+      console.warn('No se pudo promover a tenant admin (continúa):', e?.message || e);
+    }
 
     const computedBackUrl = withQueryParams(
       backUrl || 'https://gastroflow.accesoit.com.ar/billing',
@@ -1177,6 +1302,38 @@ app.get('/api/tenants/:id', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching tenant:', error);
+    return res.status(500).json({ error: 'Failed to fetch tenant' });
+  }
+});
+
+// Obtener un tenant por ID (ámbito APP tenant) - separación de endpoints
+app.get('/api/app/tenants/:id', requireTenantUser, async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (!isUuid(id)) return res.status(400).json({ error: 'tenantId inválido (UUID requerido)' });
+    if (req.auth.tenantId !== id) return res.status(403).json({ error: 'Acceso denegado al tenant' });
+
+    const result = await pool.query(
+      `SELECT id, name, slug, plan, subscription_status, mercadopago_preapproval_id, next_billing_date, created_at, settings
+       FROM tenants WHERE id = $1`,
+      [id]
+    );
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+
+    return res.json({
+      id: row.id,
+      name: row.name,
+      slug: row.slug || '',
+      plan: row.plan,
+      subscriptionStatus: row.subscription_status,
+      mercadoPagoPreapprovalId: row.mercadopago_preapproval_id || undefined,
+      nextBillingDate: row.next_billing_date ? new Date(row.next_billing_date).toISOString() : undefined,
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+      settings: row.settings || {},
+    });
+  } catch (error) {
+    console.error('Error fetching tenant (app):', error);
     return res.status(500).json({ error: 'Failed to fetch tenant' });
   }
 });

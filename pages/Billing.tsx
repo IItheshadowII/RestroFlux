@@ -45,7 +45,10 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
       try {
         await fetch('/api/subscriptions/refresh', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('gastroflow_token') ? { 'Authorization': `Bearer ${localStorage.getItem('gastroflow_token')}` } : {}),
+          },
           body: JSON.stringify({
             tenantId: tenantIdFromQuery || tenant.id,
             preapprovalId: preapprovalId || undefined,
@@ -92,7 +95,10 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
       try {
         const res = await fetch('/api/subscriptions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('gastroflow_token') ? { 'Authorization': `Bearer ${localStorage.getItem('gastroflow_token')}` } : {}),
+          },
           body: JSON.stringify({
             tenantId: tenant.id,
             planId: showCheckout.planId,

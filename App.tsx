@@ -13,10 +13,19 @@ import { db } from './services/db';
 import { User, Tenant, SubscriptionStatus, PlanTier } from './types';
 import { LogIn, Key, Mail, Store, AlertTriangle, ShieldX } from 'lucide-react';
 
-const LoginPage = ({ onLogin, isCloud }: { onLogin: (u: User) => void; isCloud: boolean }) => {
+type TenantOption = { id: string; name: string; slug?: string };
+
+const getPathArea = (): 'admin' | 'app' => {
+  const p = window.location.pathname || '/';
+  if (p.startsWith('/admin')) return 'admin';
+  return 'app';
+};
+
+const TenantLoginPage = ({ onLogin, isCloud }: { onLogin: (u: User) => void; isCloud: boolean }) => {
   const [email, setEmail] = useState('admin@demo.com');
   const [password, setPassword] = useState('password123');
-  const [tenantId, setTenantId] = useState(() => localStorage.getItem('gastroflow_last_tenant_id') || '');
+  const [tenantOptions, setTenantOptions] = useState<TenantOption[] | null>(null);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,18 +36,25 @@ const LoginPage = ({ onLogin, isCloud }: { onLogin: (u: User) => void; isCloud: 
 
     try {
       if (isCloud) {
-        if (!tenantId) {
-          setError('Tenant ID requerido (UUID)');
-          return;
-        }
-
-        const res = await fetch('/api/auth/login', {
+        const res = await fetch('/api/app/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, tenantId })
+          body: JSON.stringify({
+            email,
+            password,
+            ...(selectedTenantId ? { tenantId: selectedTenantId } : {})
+          })
         });
 
         const data = await res.json().catch(() => ({}));
+
+        if (res.status === 409 && Array.isArray(data?.tenants)) {
+          setTenantOptions(data.tenants);
+          setSelectedTenantId(data.tenants[0]?.id || '');
+          setError(null);
+          return;
+        }
+
         if (!res.ok || !data?.ok || !data?.token || !data?.user) {
           setError(data?.error || 'Credenciales inválidas');
           return;
@@ -50,7 +66,7 @@ const LoginPage = ({ onLogin, isCloud }: { onLogin: (u: User) => void; isCloud: 
         }
 
         localStorage.setItem('gastroflow_token', data.token);
-        localStorage.setItem('gastroflow_last_tenant_id', tenantId);
+        localStorage.setItem('gastroflow_last_tenant_id', data.user.tenantId);
 
         const u: User = {
           id: data.user.id,
@@ -92,20 +108,24 @@ const LoginPage = ({ onLogin, isCloud }: { onLogin: (u: User) => void; isCloud: 
 
         <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl shadow-2xl">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {isCloud && (
+            {isCloud && tenantOptions && tenantOptions.length > 0 && (
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Tenant ID</label>
+                <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Empresa</label>
                 <div className="relative">
                   <Store className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                  <input
-                    type="text"
-                    value={tenantId}
-                    onChange={(e) => setTenantId(e.target.value)}
+                  <select
+                    value={selectedTenantId}
+                    onChange={(e) => setSelectedTenantId(e.target.value)}
                     className="w-full bg-slate-800/50 border border-slate-700 text-white rounded-2xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
-                    placeholder="UUID del tenant"
-                    autoComplete="off"
-                  />
+                  >
+                    {tenantOptions.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}{t.slug ? ` (${t.slug})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                <p className="text-xs text-slate-500 font-medium">Este email está asociado a más de una empresa.</p>
               </div>
             )}
 
@@ -172,6 +192,102 @@ const LoginPage = ({ onLogin, isCloud }: { onLogin: (u: User) => void; isCloud: 
   );
 };
 
+const AdminLoginPage = ({ onLogin }: { onLogin: (u: { id: string; email: string; name: string }) => void }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !data?.token || !data?.user) {
+        setError(data?.error || 'Credenciales inválidas');
+        return;
+      }
+      localStorage.setItem('gastroflow_admin_token', data.token);
+      localStorage.setItem('gastroflow_admin_user', JSON.stringify(data.user));
+      onLogin(data.user);
+    } catch (err: any) {
+      console.error('Admin login error:', err);
+      setError(err?.message || 'Error de conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-slate-950 to-slate-950">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-10 space-y-4">
+          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-600 rounded-2xl flex items-center justify-center text-3xl font-bold italic shadow-2xl shadow-purple-500/20">G</div>
+          <h1 className="text-4xl font-black tracking-tight text-white italic">GastroFlow</h1>
+          <p className="text-slate-400">Admin de Plataforma (owner)</p>
+        </div>
+
+        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl shadow-2xl">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-800/50 border border-slate-700 text-white rounded-2xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-purple-500/50 outline-none transition-all"
+                  placeholder="owner@tuempresa.com"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-300 rounded-2xl p-4 text-sm font-bold">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
+              <div className="relative">
+                <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-800/50 border border-slate-700 text-white rounded-2xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-purple-500/50 outline-none transition-all"
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-purple-900/20 flex items-center justify-center gap-2 group"
+            >
+              {loading ? 'Validando...' : (
+                <>
+                  Entrar al Admin
+                  <LogIn size={20} className="group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AccessDenied = () => (
   <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in duration-500">
     <div className="w-24 h-24 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center shadow-2xl border border-red-500/20">
@@ -188,6 +304,8 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [activePage, setActivePage] = useState('tables');
+  const [adminUser, setAdminUser] = useState<{ id: string; email: string; name: string } | null>(null);
+  const area = getPathArea();
 
   const isCloud = (import.meta as any).env.VITE_APP_MODE === 'CLOUD' ||
     (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1'));
@@ -195,7 +313,7 @@ const App: React.FC = () => {
   const fetchTenantFromApi = async (tenantId: string): Promise<Tenant | null> => {
     try {
       const token = localStorage.getItem('gastroflow_token');
-      const res = await fetch(`/api/tenants/${tenantId}`, {
+      const res = await fetch(`/api/app/tenants/${tenantId}`, {
         headers: {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         }
@@ -212,7 +330,7 @@ const App: React.FC = () => {
     try {
       const token = localStorage.getItem('gastroflow_token');
       if (!token) return null;
-      const res = await fetch('/api/me', {
+      const res = await fetch('/api/app/me', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) return null;
@@ -236,6 +354,23 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // Redirigir root a /app para separar UI
+    if (window.location.pathname === '/' || window.location.pathname === '') {
+      window.history.replaceState({}, document.title, '/app');
+    }
+
+    if (area === 'admin') {
+      const storedAdmin = localStorage.getItem('gastroflow_admin_user');
+      if (storedAdmin) {
+        try {
+          setAdminUser(JSON.parse(storedAdmin));
+        } catch {
+          localStorage.removeItem('gastroflow_admin_user');
+        }
+      }
+      return;
+    }
+
     const stored = localStorage.getItem('gastroflow_current_user');
 
     if (isCloud) {
@@ -283,6 +418,12 @@ const App: React.FC = () => {
     localStorage.removeItem('gastroflow_token');
   };
 
+  const handleAdminLogout = () => {
+    setAdminUser(null);
+    localStorage.removeItem('gastroflow_admin_user');
+    localStorage.removeItem('gastroflow_admin_token');
+  };
+
   const refreshTenantData = () => {
     if (!user) return;
     if (isCloud) {
@@ -295,8 +436,41 @@ const App: React.FC = () => {
     setTenant(db.getTenant(user.tenantId) || null);
   };
 
+  if (area === 'admin') {
+    if (!adminUser) {
+      return <AdminLoginPage onLogin={(u) => setAdminUser(u)} />;
+    }
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
+        <div className="max-w-5xl mx-auto space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-black italic">Admin Plataforma</h1>
+              <p className="text-slate-400 text-sm">Sesión global (owner). No se mezcla con /app.</p>
+            </div>
+            <button
+              onClick={handleAdminLogout}
+              className="px-5 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold"
+            >
+              Salir
+            </button>
+          </div>
+
+          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6">
+            <p className="text-slate-300 font-bold">Endpoints disponibles:</p>
+            <ul className="text-slate-400 text-sm mt-2 space-y-1">
+              <li>- GET /api/admin/tenants</li>
+              <li>- POST /api/admin/tenants</li>
+            </ul>
+            <p className="text-slate-500 text-xs mt-4">UI de gestión completa la armamos en el siguiente paso si querés.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user || !tenant) {
-    return <LoginPage onLogin={handleLogin} isCloud={isCloud} />;
+    return <TenantLoginPage onLogin={handleLogin} isCloud={isCloud} />;
   }
 
   // Multi-tenant Billing Lock
