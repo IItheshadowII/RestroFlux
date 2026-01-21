@@ -738,7 +738,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
                 </div>
                 <div className="mt-6 pt-5 border-t border-slate-700/50 flex justify-between items-center">
                   <span className="text-base font-black text-slate-400 italic uppercase">Subtotal</span>
-                  <span className="text-3xl font-black text-emerald-400 tracking-tighter">${activeOrder?.total.toLocaleString()}</span>
+                  <span className="text-3xl font-black text-emerald-400 tracking-tighter">${(activeOrder ? activeOrder.total : 0).toLocaleString()}</span>
                 </div>
              </div>
 
