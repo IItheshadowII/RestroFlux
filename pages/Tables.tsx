@@ -362,16 +362,41 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
           const data = await res.json().catch(() => null);
           throw new Error(data?.error || 'No se pudo crear la comanda');
         }
+        const saved = await res.json();
+        const savedOrder: Order = {
+          id: saved.id,
+          tenantId: saved.tenant_id,
+          tableId: saved.table_id,
+          items: saved.items || [],
+          status: saved.status,
+          total: Number(saved.total || 0),
+          paymentMethod: saved.payment_method || undefined,
+          openedAt: saved.opened_at,
+          closedAt: saved.closed_at || undefined,
+          closedBy: saved.closed_by || undefined,
+        };
+
         // Marcar mesa como ocupada
         await fetch(`/api/tables/${editingTable.id}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'OCCUPIED' }) });
-        await refreshData();
+
+        // Actualizar estado local y abrir directamente el modal de consumo
+        setOrders(prev => {
+          const others = prev.filter(o => o.id !== savedOrder.id);
+          return [...others, savedOrder];
+        });
+        setActiveTable(editingTable);
+        setActiveOrder(savedOrder);
         setIsModalOpen(false);
+        setIsOrderModalOpen(true);
         setEditingTable(null);
       } else {
         db.update<Table>('tables', editingTable.id, tenantId, { status: 'OCCUPIED' });
         db.createOrder(editingTable.id, tenantId);
-        refreshData();
+        const order = db.getActiveOrderForTable(editingTable.id, tenantId);
+        setActiveTable(editingTable);
+        setActiveOrder(order || null);
         setIsModalOpen(false);
+        setIsOrderModalOpen(true);
       }
     } catch (err: any) {
       console.error(err);
