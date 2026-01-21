@@ -58,10 +58,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
   const permissions = user.permissions?.length ? user.permissions : (userRole?.permissions || []);
 
   // Determinar si está en TRIAL activo (no expirado)
+  // Comparar como strings para evitar problemas de enum vs string
   const now = Date.now();
   const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
-  const isTrialActive = tenant?.subscriptionStatus === SubscriptionStatus.TRIAL && 
-                        trialEndsAt && trialEndsAt.getTime() > now;
+  const isTrial = tenant?.subscriptionStatus === 'TRIAL' || tenant?.subscriptionStatus === SubscriptionStatus.TRIAL;
+  const isTrialActive = isTrial && trialEndsAt && trialEndsAt.getTime() > now;
 
   const menuItems = [
     { id: 'tables', label: 'Salón', icon: TableIcon, permission: 'tables.view' },
