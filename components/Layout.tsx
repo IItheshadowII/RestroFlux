@@ -63,16 +63,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
   const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
   const isTrial = tenant?.subscriptionStatus === 'TRIAL' || tenant?.subscriptionStatus === SubscriptionStatus.TRIAL;
   const isTrialActive = isTrial && trialEndsAt && trialEndsAt.getTime() > now;
-  
-  // DEBUG: Quitar después de confirmar que funciona
-  console.log('[Layout] Trial Debug:', { 
-    subscriptionStatus: tenant?.subscriptionStatus, 
-    trialEndsAt: tenant?.trialEndsAt,
-    isTrial, 
-    isTrialActive, 
-    permissions,
-    userPermissions: user.permissions 
-  });
 
   const menuItems = [
     { id: 'tables', label: 'Salón', icon: TableIcon, permission: 'tables.view' },

@@ -11,7 +11,7 @@ import { KitchenPage } from './pages/Kitchen';
 import { ReportsPage } from './pages/Reports';
 import { db } from './services/db';
 import { User, Tenant, SubscriptionStatus, PlanTier } from './types';
-import { LogIn, Key, Mail, Store, AlertTriangle, ShieldX, Building2, Users, CreditCard, Clock, ChevronDown, ChevronUp, Loader2, RefreshCw } from 'lucide-react';
+import { LogIn, Key, Mail, Store, AlertTriangle, ShieldX, Building2, Users, CreditCard, Clock, ChevronDown, ChevronUp, Loader2, RefreshCw, X } from 'lucide-react';
 
 type TenantOption = { id: string; name: string; slug?: string };
 
@@ -1035,6 +1035,11 @@ const AdminDashboardPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) =>
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
   const [tenantDetail, setTenantDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [trialModal, setTrialModal] = useState<{ tenantId: string; tenantName: string } | null>(null);
+  const [trialDays, setTrialDays] = useState('15');
+  const [trialAction, setTrialAction] = useState<'extend' | 'end' | 'set'>('extend');
+  const [trialDate, setTrialDate] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   const fetchDashboard = async () => {
     setLoading(true);
@@ -1069,6 +1074,40 @@ const AdminDashboardPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) =>
       console.error('Error fetching tenant detail:', err);
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const handleTrialAction = async () => {
+    if (!trialModal) return;
+    setActionLoading(true);
+    try {
+      const token = localStorage.getItem('gastroflow_admin_token');
+      const body = trialAction === 'set' 
+        ? { action: 'set', days: trialDate }
+        : { action: trialAction, days: parseInt(trialDays, 10) };
+      
+      const res = await fetch(`/api/admin/tenants/${trialModal.tenantId}/trial`, {
+        method: 'PATCH',
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+      });
+      
+      const result = await res.json();
+      if (res.ok) {
+        alert(result.message || 'Acción completada');
+        setTrialModal(null);
+        fetchDashboard();
+      } else {
+        alert(result.error || 'Error');
+      }
+    } catch (err) {
+      console.error('Error modifying trial:', err);
+      alert('Error de conexión');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -1164,7 +1203,7 @@ const AdminDashboardPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) =>
                       <th className="px-6 py-4 text-left">Estado</th>
                       <th className="px-6 py-4 text-center">Usuarios</th>
                       <th className="px-6 py-4 text-left">Vencimiento</th>
-                      <th className="px-6 py-4 text-left">Creado</th>
+                      <th className="px-6 py-4 text-left">Acciones</th>
                       <th className="px-6 py-4"></th>
                     </tr>
                   </thead>
@@ -1188,7 +1227,14 @@ const AdminDashboardPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) =>
                               ? formatDate(t.trialEndsAt || t.trial_ends_at)
                               : formatDate(t.nextBillingDate || t.next_billing_date)}
                           </td>
-                          <td className="px-6 py-4 text-slate-500">{formatDate(t.created_at)}</td>
+                          <td className="px-6 py-4">
+                            <button
+                              onClick={() => setTrialModal({ tenantId: t.id, tenantName: t.name })}
+                              className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-bold rounded-lg transition-colors"
+                            >
+                              Gestionar Trial
+                            </button>
+                          </td>
                           <td className="px-6 py-4">
                             <button
                               onClick={() => fetchTenantDetail(t.id)}
@@ -1240,6 +1286,111 @@ const AdminDashboardPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) =>
           </>
         ) : (
           <p className="text-slate-500">No se pudo cargar el dashboard</p>
+        )}
+
+        {/* Trial Management Modal */}
+        {trialModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+              <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center">
+                <h3 className="text-lg font-black">Gestionar Trial</h3>
+                <button onClick={() => setTrialModal(null)} className="p-2 hover:bg-slate-800 rounded-xl">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 space-y-5">
+                <p className="text-slate-400 text-sm">
+                  Tenant: <span className="font-bold text-white">{trialModal.tenantName}</span>
+                </p>
+
+                <div className="space-y-3">
+                  <label className="text-sm text-slate-400 font-bold">Acción</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => setTrialAction('extend')}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+                        trialAction === 'extend' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      Extender
+                    </button>
+                    <button
+                      onClick={() => setTrialAction('set')}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+                        trialAction === 'set' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      Establecer
+                    </button>
+                    <button
+                      onClick={() => setTrialAction('end')}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+                        trialAction === 'end' ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      Terminar
+                    </button>
+                  </div>
+                </div>
+
+                {trialAction === 'extend' && (
+                  <div className="space-y-2">
+                    <label className="text-sm text-slate-400 font-bold">Días a agregar</label>
+                    <input
+                      type="number"
+                      value={trialDays}
+                      onChange={(e) => setTrialDays(e.target.value)}
+                      min="1"
+                      max="365"
+                      className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
+                      placeholder="15"
+                    />
+                    <p className="text-xs text-slate-500">Se agregarán estos días a partir de la fecha actual o del vencimiento existente (lo que sea mayor).</p>
+                  </div>
+                )}
+
+                {trialAction === 'set' && (
+                  <div className="space-y-2">
+                    <label className="text-sm text-slate-400 font-bold">Fecha de vencimiento</label>
+                    <input
+                      type="date"
+                      value={trialDate}
+                      onChange={(e) => setTrialDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
+                    />
+                    <p className="text-xs text-slate-500">El trial finalizará en esta fecha exacta.</p>
+                  </div>
+                )}
+
+                {trialAction === 'end' && (
+                  <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+                    <p className="text-red-400 text-sm font-bold">⚠️ Esto terminará el trial inmediatamente.</p>
+                    <p className="text-slate-500 text-xs mt-1">El tenant pasará a estado INACTIVE y no podrá usar la app hasta que active una suscripción.</p>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-3">
+                  <button
+                    onClick={() => setTrialModal(null)}
+                    className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleTrialAction}
+                    disabled={actionLoading || (trialAction === 'set' && !trialDate)}
+                    className={`flex-1 px-4 py-3 rounded-xl font-bold transition-colors disabled:opacity-50 ${
+                      trialAction === 'end' 
+                        ? 'bg-red-600 hover:bg-red-500 text-white' 
+                        : 'bg-blue-600 hover:bg-blue-500 text-white'
+                    }`}
+                  >
+                    {actionLoading ? <Loader2 className="animate-spin mx-auto" size={18} /> : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

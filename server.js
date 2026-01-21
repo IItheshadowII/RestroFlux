@@ -356,7 +356,22 @@ const ensureSchema = async () => {
       CREATE UNIQUE INDEX IF NOT EXISTS ux_billing_mp_subscription_id ON billing_history(mp_subscription_id);
     `);
 
-    console.log('✅ DB schema verificado (tenants + billing_history)');
+    // Trial history: rastrear emails que ya tuvieron trial (anti-abuso)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS trial_history (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        email VARCHAR(255) NOT NULL,
+        tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
+        started_at TIMESTAMP DEFAULT NOW(),
+        ended_at TIMESTAMP,
+        reason VARCHAR(100) DEFAULT 'expired'
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS ux_trial_history_email ON trial_history(email);
+      CREATE INDEX IF NOT EXISTS idx_trial_history_tenant ON trial_history(tenant_id);
+    `);
+
+    console.log('✅ DB schema verificado (tenants + billing_history + trial_history)');
   } finally {
     client.release();
   }
@@ -736,6 +751,16 @@ app.post('/api/app/auth/register', async (req, res) => {
     const ga = await pool.query('SELECT 1 FROM global_admins WHERE email = $1 LIMIT 1', [email]);
     if (ga.rows.length > 0) return res.status(409).json({ error: 'El email ya está reservado para el owner' });
 
+    // Verificar si el email ya existe como usuario en algún tenant
+    const existingUser = await pool.query('SELECT 1 FROM users WHERE email = $1 LIMIT 1', [email]);
+    if (existingUser.rows.length > 0) {
+      return res.status(409).json({ error: 'Este email ya está registrado. Si olvidaste tu contraseña, usá "Recuperar contraseña".' });
+    }
+
+    // Anti-abuso de trial: verificar si este email ya tuvo trial antes
+    const trialCheck = await pool.query('SELECT 1 FROM trial_history WHERE email = $1 LIMIT 1', [email.toLowerCase()]);
+    const hadTrialBefore = trialCheck.rows.length > 0;
+
     let slug = tenantSlug ? slugify(tenantSlug) : slugify(tenantName);
     if (!slug) slug = `tenant-${crypto.randomBytes(4).toString('hex')}`;
 
@@ -745,13 +770,26 @@ app.post('/api/app/auth/register', async (req, res) => {
       slug = `${slug}-${crypto.randomBytes(3).toString('hex')}`;
     }
 
+    // Si ya tuvo trial, crear como INACTIVE (debe pagar para usar)
+    const subscriptionStatus = hadTrialBefore ? 'INACTIVE' : 'TRIAL';
+    const trialEndsClause = hadTrialBefore ? 'NULL' : "NOW() + INTERVAL '15 days'";
+
     const createdTenant = await pool.query(
       `INSERT INTO tenants (name, slug, plan, subscription_status, trial_ends_at)
-       VALUES ($1, $2, 'BASIC', 'TRIAL', NOW() + INTERVAL '15 days')
+       VALUES ($1, $2, 'BASIC', $3, ${trialEndsClause})
        RETURNING id, name, slug, plan, subscription_status, trial_ends_at, mercadopago_preapproval_id, next_billing_date, created_at`,
-      [tenantName, slug]
+      [tenantName, slug, subscriptionStatus]
     );
     const tenant = createdTenant.rows[0];
+
+    // Si es trial nuevo, registrar en trial_history
+    if (!hadTrialBefore) {
+      await pool.query(
+        `INSERT INTO trial_history (email, tenant_id, started_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (email) DO NOTHING`,
+        [email.toLowerCase(), tenant.id]
+      );
+    }
 
     await seedDefaultRolesForTenant(tenant.id);
     const adminRoleId = await getTenantAdminRoleId(tenant.id);
@@ -1084,9 +1122,255 @@ app.get('/api/admin/dashboard', requireGlobalAdmin, async (_req, res) => {
   }
 });
 
+// Modificar trial de un tenant (admin global)
+app.patch('/api/admin/tenants/:tenantId/trial', requireGlobalAdmin, async (req, res) => {
+  const { tenantId } = req.params;
+  const { action, days } = req.body || {};
+  try {
+    if (!isUuid(tenantId)) return res.status(400).json({ error: 'tenantId inválido' });
+
+    const tenantRes = await pool.query('SELECT * FROM tenants WHERE id = $1', [tenantId]);
+    const tenant = tenantRes.rows[0];
+    if (!tenant) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    if (action === 'extend') {
+      // Extender trial: agregar días a partir de ahora o de trial_ends_at si aún es futuro
+      const daysToAdd = parseInt(days, 10);
+      if (!daysToAdd || daysToAdd < 1 || daysToAdd > 365) {
+        return res.status(400).json({ error: 'days debe ser entre 1 y 365' });
+      }
+
+      const baseDate = tenant.trial_ends_at && new Date(tenant.trial_ends_at) > new Date()
+        ? tenant.trial_ends_at
+        : new Date();
+
+      await pool.query(
+        `UPDATE tenants SET 
+           subscription_status = 'TRIAL',
+           trial_ends_at = $2::timestamp + ($3 || ' days')::interval
+         WHERE id = $1`,
+        [tenantId, baseDate, daysToAdd]
+      );
+
+      const updated = await pool.query('SELECT * FROM tenants WHERE id = $1', [tenantId]);
+      return res.json({ ok: true, message: `Trial extendido ${daysToAdd} días`, tenant: updated.rows[0] });
+
+    } else if (action === 'end') {
+      // Terminar trial inmediatamente
+      await pool.query(
+        `UPDATE tenants SET subscription_status = 'INACTIVE', trial_ends_at = NOW() WHERE id = $1`,
+        [tenantId]
+      );
+
+      // Registrar fin de trial en historial
+      const usersRes = await pool.query('SELECT email FROM users WHERE tenant_id = $1', [tenantId]);
+      for (const u of usersRes.rows) {
+        await pool.query(
+          `INSERT INTO trial_history (email, tenant_id, started_at, ended_at, reason)
+           VALUES ($1, $2, COALESCE($3, NOW()), NOW(), 'admin_ended')
+           ON CONFLICT (email) DO UPDATE SET ended_at = NOW(), reason = 'admin_ended'`,
+          [u.email.toLowerCase(), tenantId, tenant.created_at]
+        );
+      }
+
+      return res.json({ ok: true, message: 'Trial terminado' });
+
+    } else if (action === 'set') {
+      // Establecer fecha exacta de fin de trial
+      const newEndDate = new Date(days);
+      if (isNaN(newEndDate.getTime())) {
+        return res.status(400).json({ error: 'Fecha inválida. Usar formato ISO (YYYY-MM-DD)' });
+      }
+
+      await pool.query(
+        `UPDATE tenants SET subscription_status = 'TRIAL', trial_ends_at = $2 WHERE id = $1`,
+        [tenantId, newEndDate]
+      );
+
+      const updated = await pool.query('SELECT * FROM tenants WHERE id = $1', [tenantId]);
+      return res.json({ ok: true, message: `Trial establecido hasta ${newEndDate.toISOString()}`, tenant: updated.rows[0] });
+
+    } else {
+      return res.status(400).json({ error: 'action debe ser: extend, end, o set' });
+    }
+  } catch (error) {
+    console.error('admin trial modify error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
 // ==========================================
 // TENANT-SCOPED: USERS & ROLES
 // ==========================================
+
+// Listar usuarios del tenant (incluye el admin)
+app.get('/api/tenants/:tenantId/users', requireAuth, requireTenantAccess, async (req, res) => {
+  const { tenantId } = req.params;
+  try {
+    const r = await pool.query(
+      `SELECT u.id, u.tenant_id, u.email, u.name, u.role_id, u.is_active, u.last_login, u.created_at,
+              r.name AS role_name, r.permissions
+       FROM users u
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE u.tenant_id = $1
+       ORDER BY u.created_at ASC`,
+      [tenantId]
+    );
+    return res.json(r.rows.map(u => ({
+      id: u.id,
+      tenantId: u.tenant_id,
+      email: u.email,
+      name: u.name,
+      roleId: u.role_id,
+      roleName: u.role_name,
+      permissions: u.permissions || [],
+      isActive: u.is_active,
+      lastLogin: u.last_login,
+      createdAt: u.created_at,
+    })));
+  } catch (error) {
+    console.error('list users error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
+// Crear nuevo usuario en el tenant
+app.post('/api/tenants/:tenantId/users', requireAuth, requireTenantAccess, requirePermission('users.manage'), async (req, res) => {
+  const { tenantId } = req.params;
+  const { name, email, password, roleId } = req.body || {};
+  try {
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'name/email/password requeridos' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    // Verificar límite de usuarios
+    const countRes = await pool.query(
+      'SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true',
+      [tenantId]
+    );
+    const tenantRes = await pool.query('SELECT plan FROM tenants WHERE id = $1', [tenantId]);
+    const plan = tenantRes.rows[0]?.plan || 'BASIC';
+    const limits = { BASIC: 1, PRO: 5, ENTERPRISE: 999 };
+    const userLimit = limits[plan] || 1;
+    if (parseInt(countRes.rows[0].count, 10) >= userLimit) {
+      return res.status(403).json({ error: `Límite de usuarios alcanzado (${userLimit})` });
+    }
+
+    // Verificar email único
+    const existing = await pool.query('SELECT 1 FROM users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'El email ya está registrado' });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const r = await pool.query(
+      `INSERT INTO users (tenant_id, email, password_hash, name, role_id, is_active)
+       VALUES ($1, $2, $3, $4, $5, TRUE)
+       RETURNING id, tenant_id, email, name, role_id, is_active, created_at`,
+      [tenantId, email, passwordHash, name, roleId || null]
+    );
+    return res.status(201).json(r.rows[0]);
+  } catch (error) {
+    console.error('create user error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
+// Actualizar usuario (nombre, rol, estado)
+app.put('/api/tenants/:tenantId/users/:userId', requireAuth, requireTenantAccess, requirePermission('users.manage'), async (req, res) => {
+  const { tenantId, userId } = req.params;
+  const { name, roleId, isActive } = req.body || {};
+  try {
+    if (!isUuid(userId)) return res.status(400).json({ error: 'userId inválido' });
+
+    const updates = [];
+    const values = [tenantId, userId];
+    let idx = 3;
+
+    if (name !== undefined) { updates.push(`name = $${idx++}`); values.push(name); }
+    if (roleId !== undefined) { updates.push(`role_id = $${idx++}`); values.push(roleId); }
+    if (isActive !== undefined) { updates.push(`is_active = $${idx++}`); values.push(isActive); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'Nada que actualizar' });
+    }
+
+    const r = await pool.query(
+      `UPDATE users SET ${updates.join(', ')} WHERE tenant_id = $1 AND id = $2
+       RETURNING id, tenant_id, email, name, role_id, is_active, created_at`,
+      values
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+    return res.json(r.rows[0]);
+  } catch (error) {
+    console.error('update user error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
+// Cambiar contraseña de usuario (admin del tenant o el propio usuario)
+app.patch('/api/tenants/:tenantId/users/:userId/password', requireAuth, requireTenantAccess, async (req, res) => {
+  const { tenantId, userId } = req.params;
+  const { newPassword, currentPassword } = req.body || {};
+  try {
+    if (!isUuid(userId)) return res.status(400).json({ error: 'userId inválido' });
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: 'newPassword debe tener al menos 8 caracteres' });
+    }
+
+    // Verificar permisos: solo el propio usuario o alguien con users.manage
+    const isSelf = req.auth.sub === userId;
+    const hasPermission = (req.auth.permissions || []).includes('users.manage');
+
+    if (!isSelf && !hasPermission) {
+      return res.status(403).json({ error: 'No tenés permiso para cambiar esta contraseña' });
+    }
+
+    // Si es el propio usuario, verificar contraseña actual
+    if (isSelf && currentPassword) {
+      const userRes = await pool.query('SELECT password_hash FROM users WHERE id = $1 AND tenant_id = $2', [userId, tenantId]);
+      if (userRes.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+      const valid = await verifyPassword(currentPassword, userRes.rows[0].password_hash);
+      if (!valid) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2 AND tenant_id = $3',
+      [passwordHash, userId, tenantId]
+    );
+
+    return res.json({ ok: true, message: 'Contraseña actualizada' });
+  } catch (error) {
+    console.error('change password error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
+// Eliminar usuario (soft delete)
+app.delete('/api/tenants/:tenantId/users/:userId', requireAuth, requireTenantAccess, requirePermission('users.manage'), async (req, res) => {
+  const { tenantId, userId } = req.params;
+  try {
+    if (!isUuid(userId)) return res.status(400).json({ error: 'userId inválido' });
+
+    // No permitir auto-eliminación
+    if (req.auth.sub === userId) {
+      return res.status(400).json({ error: 'No podés eliminarte a vos mismo' });
+    }
+
+    await pool.query(
+      'UPDATE users SET is_active = false WHERE id = $1 AND tenant_id = $2',
+      [userId, tenantId]
+    );
+    return res.json({ ok: true, message: 'Usuario desactivado' });
+  } catch (error) {
+    console.error('delete user error:', error);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
 
 app.get('/api/tenants/:tenantId/roles', requireAuth, requireTenantAccess, async (req, res) => {
   const { tenantId } = req.params;
