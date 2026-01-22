@@ -75,14 +75,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
     { id: 'billing', label: 'Suscripción', icon: CreditCard, permission: 'billing.manage' },
   ];
 
-  // Durante TRIAL activo: mostrar TODAS las funciones
-  // Después del trial o con suscripción normal: filtrar por permisos del rol
+  // Filtrar siempre por permisos del usuario/rol
   const allowedMenuItems = menuItems.filter(item => {
-    // Durante trial activo, dar acceso a todo excepto restricciones de plan
-    const hasPerm = isTrialActive ? true : permissions.includes(item.permission);
+    const hasPerm = permissions.includes(item.permission);
     
-    // El módulo de cocina solo existe para planes multi-usuario (excepto en trial que se muestra todo)
-    if (item.id === 'kitchen' && tenant && !isTrialActive) {
+    // El módulo de cocina solo existe para planes multi-usuario
+    if (item.id === 'kitchen' && tenant) {
       const isMultiUserPlan = PLANS[tenant.plan].limits.users > 1;
       return hasPerm && isMultiUserPlan;
     }

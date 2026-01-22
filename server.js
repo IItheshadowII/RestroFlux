@@ -526,6 +526,17 @@ const seedDefaultRolesForTenant = async (tenantId) => {
     ]]
   );
 
+  // Cocina
+  await pool.query(
+    `INSERT INTO roles (tenant_id, name, permissions)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (tenant_id, name) DO NOTHING`,
+    [tenantId, 'Cocina', [
+      'kitchen.view', 'kitchen.manage',
+      'menu.view', 'stock.view'
+    ]]
+  );
+
   // Mozo/Camarero
   await pool.query(
     `INSERT INTO roles (tenant_id, name, permissions)
