@@ -1920,6 +1920,18 @@ app.post('/api/:resource', async (req, res) => {
       }
     }
 
+    // Serializar explícitamente objetos/arrays (p.ej. items JSONB) para evitar errores de tipo JSON
+    for (const k of Object.keys(data)) {
+      const v = data[k];
+      if (v !== null && typeof v === 'object') {
+        try {
+          data[k] = JSON.stringify(v);
+        } catch (e) {
+          data[k] = String(v);
+        }
+      }
+    }
+
     const keys = Object.keys(data);
     const values = Object.values(data);
     const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
@@ -1960,6 +1972,18 @@ app.put('/api/:resource/:id', async (req, res) => {
     if (tenantScoped && !resolvedTenantId) return res.status(400).json({ error: 'tenantId requerido' });
 
     const updates = keys.map((key, i) => `${key} = $${i + 2}`).join(', ');
+    // Serializar objetos/arrays en payload de actualización
+    for (const k of Object.keys(data)) {
+      const v = data[k];
+      if (v !== null && typeof v === 'object') {
+        try {
+          data[k] = JSON.stringify(v);
+        } catch (e) {
+          data[k] = String(v);
+        }
+      }
+    }
+
     const values = [id, ...Object.values(data)];
 
     const query = tenantScoped
