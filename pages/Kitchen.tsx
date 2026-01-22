@@ -13,6 +13,19 @@ export const KitchenPage: React.FC<{ tenantId: string; isCloud?: boolean }> = ({
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(Date.now());
 
+  const parseItems = (raw: any): OrderItem[] => {
+    if (Array.isArray(raw)) return raw as OrderItem[];
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed as OrderItem[] : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
   useEffect(() => {
     refreshData();
     const dataInterval = setInterval(refreshData, 10000); // Refresh data cada 10s
@@ -46,7 +59,7 @@ export const KitchenPage: React.FC<{ tenantId: string; isCloud?: boolean }> = ({
             id: o.id,
             tenantId: o.tenant_id,
             tableId: o.table_id,
-            items: Array.isArray(o.items) ? o.items : [],
+            items: parseItems(o.items),
             status: o.status,
             total: Number(o.total || 0),
             paymentMethod: o.payment_method || undefined,

@@ -49,6 +49,19 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
 
   const [orderSearch, setOrderSearch] = useState('');
 
+  const parseItems = (raw: any): OrderItem[] => {
+    if (Array.isArray(raw)) return raw as OrderItem[];
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed as OrderItem[] : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
   // SaaS Context
   const tenant = tenantProp || db.getTenant(tenantId);
   const isMultiUserPlan = tenant ? PLANS[tenant.plan].limits.users > 1 : false;
@@ -120,7 +133,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
             id: o.id,
             tenantId: o.tenant_id,
             tableId: o.table_id,
-            items: Array.isArray(o.items) ? o.items : [],
+            items: parseItems(o.items),
             status: o.status,
             total: Number(o.total || 0),
             paymentMethod: o.payment_method || undefined,
@@ -188,7 +201,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
       id: saved.id,
       tenantId: saved.tenant_id,
       tableId: saved.table_id,
-      items: Array.isArray(saved.items) ? saved.items : [],
+      items: parseItems(saved.items),
       status: saved.status,
       total: Number(saved.total || 0),
       paymentMethod: saved.payment_method || undefined,
@@ -367,7 +380,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
           id: saved.id,
           tenantId: saved.tenant_id,
           tableId: saved.table_id,
-          items: Array.isArray(saved.items) ? saved.items : [],
+          items: parseItems(saved.items),
           status: saved.status,
           total: Number(saved.total || 0),
           paymentMethod: saved.payment_method || undefined,
