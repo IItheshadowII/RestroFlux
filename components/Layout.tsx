@@ -93,17 +93,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
 
   const getPlanBadge = () => {
     if (!tenant) return null;
-    
-    // Mostrar el status de suscripción real (TRIAL, BASIC, PRO, etc)
-    const displayPlan = isTrialActive ? 'TRIAL' : (tenant.plan || 'BASIC');
-    const isBasic = displayPlan === 'BASIC' || displayPlan === PlanTier.BASIC;
-    const isPro = displayPlan === 'PRO' || displayPlan === PlanTier.PRO;
-    const isTrial = displayPlan === 'TRIAL';
+    // Plan efectivo: durante TRIAL activo comportarse como ENTERPRISE
+    const effectivePlan = isTrialActive ? PlanTier.ENTERPRISE : (tenant.plan || PlanTier.BASIC);
+    const displayPlanName = isTrialActive ? `${PLANS[PlanTier.ENTERPRISE].name} (TRIAL)` : PLANS[effectivePlan].name;
+    const isBasic = effectivePlan === PlanTier.BASIC;
+    const isPro = effectivePlan === PlanTier.PRO;
+    const isTrialBadge = isTrialActive;
     
     const colors = {
-      glow: isTrial ? 'shadow-emerald-500/10 border-emerald-700/50' : isBasic ? 'shadow-slate-500/10 border-slate-700/50' : isPro ? 'shadow-blue-500/20 border-blue-500/40' : 'shadow-purple-500/20 border-purple-500/40',
-      bg: isTrial ? 'bg-emerald-800/20' : isBasic ? 'bg-slate-800/30' : isPro ? 'bg-blue-600/10' : 'bg-purple-600/10',
-      iconBg: isTrial ? 'bg-emerald-700 text-emerald-300' : isBasic ? 'bg-slate-700 text-slate-400' : isPro ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white'
+      glow: isTrialBadge ? 'shadow-emerald-500/10 border-emerald-700/50' : isBasic ? 'shadow-slate-500/10 border-slate-700/50' : isPro ? 'shadow-blue-500/20 border-blue-500/40' : 'shadow-purple-500/20 border-purple-500/40',
+      bg: isTrialBadge ? 'bg-emerald-800/20' : isBasic ? 'bg-slate-800/30' : isPro ? 'bg-blue-600/10' : 'bg-purple-600/10',
+      iconBg: isTrialBadge ? 'bg-emerald-700 text-emerald-300' : isBasic ? 'bg-slate-700 text-slate-400' : isPro ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white'
     };
 
     if (collapsed) {
@@ -111,10 +111,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
         <button 
           onClick={() => setActivePage('billing')}
           className={`mx-auto w-12 h-12 rounded-2xl border flex items-center justify-center transition-all hover:scale-110 active:scale-90 shadow-xl ${colors.bg} ${colors.glow}`}
-          title={`Plan ${displayPlan}`}
+          title={`Plan ${displayPlanName}`}
         >
           <div className="relative">
-            {isTrial ? <Clock size={20} className="text-emerald-400" /> : isBasic ? <Shield size={20} className="text-slate-400" /> : isPro ? <Zap size={20} className="text-blue-400" /> : <Crown size={20} className="text-purple-400" />}
+            {isTrialBadge ? <Clock size={20} className="text-emerald-400" /> : isBasic ? <Shield size={20} className="text-slate-400" /> : isPro ? <Zap size={20} className="text-blue-400" /> : <Crown size={20} className="text-purple-400" />}
             {/* Pequeño punto de estatus activo */}
             <div className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${isTrial ? 'bg-emerald-400' : isBasic ? 'bg-slate-500' : isPro ? 'bg-blue-400' : 'bg-purple-400'}`}></div>
           </div>
@@ -133,9 +133,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
         <div className="text-left flex-1 min-w-0">
           <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest truncate">Plan Actual</p>
           <p className={`text-sm font-black italic tracking-tight truncate ${
-            isTrial ? 'text-emerald-400' : isBasic ? 'text-slate-300' : isPro ? 'text-blue-400' : 'text-purple-400'
+            isTrialBadge ? 'text-emerald-400' : isBasic ? 'text-slate-300' : isPro ? 'text-blue-400' : 'text-purple-400'
           }`}>
-            {displayPlan}
+            {displayPlanName}
           </p>
         </div>
         {permissions.includes('billing.manage') && (

@@ -6,7 +6,7 @@ import {
   CheckCircle, Bell, AlertTriangle
 } from 'lucide-react';
 import { db } from '../services/db';
-import { Table, Order, Product, OrderItem, User, OrderItemStatus, Tenant } from '../types';
+import { Table, Order, Product, OrderItem, User, OrderItemStatus, Tenant, PlanTier, SubscriptionStatus } from '../types';
 import { PLANS } from '../constants';
 
 interface ModalProps {
@@ -64,7 +64,10 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
 
   // SaaS Context
   const tenant = tenantProp || db.getTenant(tenantId);
-  const isMultiUserPlan = tenant ? PLANS[tenant.plan].limits.users > 1 : false;
+  const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
+  const isTrialActive = tenant && (tenant.subscriptionStatus === 'TRIAL' || tenant.subscriptionStatus === SubscriptionStatus.TRIAL) && trialEndsAt && trialEndsAt.getTime() > Date.now();
+  const effectivePlan = tenant ? (isTrialActive ? PlanTier.ENTERPRISE : tenant.plan) : PlanTier.BASIC;
+  const isMultiUserPlan = PLANS[effectivePlan].limits.users > 1;
 
   useEffect(() => {
     refreshData();

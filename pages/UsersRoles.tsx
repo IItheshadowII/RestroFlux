@@ -718,7 +718,12 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
            </div>
            <div className="space-y-2">
               <h4 className="text-2xl font-black text-white italic tracking-tight">¡Has alcanzado tu límite!</h4>
-              <p className="text-slate-400 font-medium">Tu plan actual <b>{tenant ? PLANS[tenant.plan].name : '---'}</b> solo permite un máximo de <b>{userLimit}</b> usuarios.</p>
+              {(() => {
+                const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
+                const isTrialActive = tenant && (tenant.subscriptionStatus === 'TRIAL' || tenant.subscriptionStatus === SubscriptionStatus.TRIAL) && trialEndsAt && trialEndsAt.getTime() > Date.now();
+                const effectivePlan = isTrialActive ? PlanTier.ENTERPRISE : (tenant ? tenant.plan : PlanTier.BASIC);
+                return (<p className="text-slate-400 font-medium">Tu plan actual <b>{PLANS[effectivePlan].name}{isTrialActive ? ' (TRIAL)' : ''}</b> solo permite un máximo de <b>{userLimit}</b> usuarios.</p>);
+              })()}
            </div>
            
            <div className="bg-slate-800/40 p-6 rounded-3xl border border-slate-700/50 text-left space-y-4">

@@ -185,7 +185,12 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
               <h2 className="text-3xl font-black text-slate-100 italic tracking-tight mb-2">Estado de Suscripción</h2>
               <div className="flex flex-wrap items-center gap-3 justify-center md:justify-start">
                 <span className="px-5 py-1.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 font-black rounded-full text-xs uppercase tracking-[0.1em]">
-                  {PLANS[tenant.plan].name}
+                  {(() => {
+                    const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
+                    const isTrialActive = tenant && (tenant.subscriptionStatus === 'TRIAL' || tenant.subscriptionStatus === SubscriptionStatus.TRIAL) && trialEndsAt && trialEndsAt.getTime() > Date.now();
+                    const effectivePlan = isTrialActive ? PlanTier.ENTERPRISE : (tenant ? tenant.plan : PlanTier.BASIC);
+                    return `${PLANS[effectivePlan].name}${isTrialActive ? ' (TRIAL)' : ''}`;
+                  })()}
                 </span>
                 <span className={`px-5 py-1.5 rounded-full text-xs font-black uppercase tracking-[0.1em] flex items-center gap-2 border ${tenant.subscriptionStatus === SubscriptionStatus.ACTIVE
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
