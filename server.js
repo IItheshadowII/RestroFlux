@@ -896,6 +896,10 @@ app.post('/api/app/auth/register', async (req, res) => {
       console.warn('No se pudo enviar email de bienvenida (continúa):', e?.message || e);
     }
 
+    const trialEndsAtResp = tenant.trial_ends_at ? new Date(tenant.trial_ends_at) : null;
+    const isTrialActiveResp = String(tenant.subscription_status).toUpperCase() === 'TRIAL' && trialEndsAtResp && trialEndsAtResp.getTime() > Date.now();
+    const effectivePlanResp = isTrialActiveResp ? 'ENTERPRISE' : tenant.plan;
+
     return res.status(201).json({
       ok: true,
       token,
@@ -905,7 +909,7 @@ app.post('/api/app/auth/register', async (req, res) => {
         id: tenant.id,
         name: tenant.name,
         slug: tenant.slug || '',
-        plan: tenant.plan,
+        plan: effectivePlanResp,
         subscriptionStatus: tenant.subscription_status,
         trialEndsAt: tenant.trial_ends_at ? new Date(tenant.trial_ends_at).toISOString() : undefined,
         mercadoPagoPreapprovalId: tenant.mercadopago_preapproval_id || undefined,
@@ -2221,7 +2225,8 @@ app.post('/api/license/verify', async (req, res) => {
     if (tenant.subscription_status === 'TRIAL') {
       const trialEndsAt = tenant.trial_ends_at ? new Date(tenant.trial_ends_at) : null;
       const isTrialActive = !trialEndsAt || trialEndsAt.getTime() > Date.now();
-      return res.json({ valid: isTrialActive, plan: tenant.plan, status: isTrialActive ? 'TRIAL' : 'INACTIVE' });
+      const effectivePlan = isTrialActive ? 'ENTERPRISE' : tenant.plan;
+      return res.json({ valid: isTrialActive, plan: effectivePlan, status: isTrialActive ? 'TRIAL' : 'INACTIVE' });
     }
 
     return res.json({ valid: false, status: tenant.subscription_status, message: 'Subscription inactive' });

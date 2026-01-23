@@ -1,6 +1,7 @@
 
 import { Tenant, User, Role, Category, Product, Table, AuditLog, PlanTier, SubscriptionStatus, Order, OrderItem, Shift, OrderItemStatus, TenantSettings } from '../types';
 import { PLANS } from '../constants';
+import { getEffectivePlan } from '../utils/subscription';
 
 // Configuración de entorno
 const env = (import.meta as any).env || {};
@@ -339,9 +340,7 @@ class DBService {
     const tenant = this.getTenant(tenantId);
     if (!tenant) return false;
     const currentActiveUsers = this.query<User>('users', tenantId).filter(u => u.isActive).length;
-    const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
-    const isTrialActive = tenant && String(tenant.subscriptionStatus).toUpperCase() === 'TRIAL' && trialEndsAt && trialEndsAt.getTime() > Date.now();
-    const effectivePlan = isTrialActive ? PlanTier.ENTERPRISE : tenant.plan;
+    const effectivePlan = getEffectivePlan(tenant);
     const limit = PLANS[effectivePlan].limits.users;
     return currentActiveUsers < limit;
   }

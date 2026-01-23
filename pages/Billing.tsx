@@ -6,6 +6,7 @@ import {
   ArrowRight, Sparkles, Building2, X, Users
 } from 'lucide-react';
 import { PLANS } from '../constants';
+import { getEffectivePlan } from '../utils/subscription';
 import { PlanTier, Tenant, SubscriptionStatus, User } from '../types';
 import { db } from '../services/db';
 
@@ -22,6 +23,7 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
   const isActive = tenant.subscriptionStatus === SubscriptionStatus.ACTIVE;
   const isTrial = tenant.subscriptionStatus === SubscriptionStatus.TRIAL;
   const isTrialActive = isTrial && (!trialEndsAt || trialEndsAt.getTime() > now);
+  const effectivePlan = getEffectivePlan(tenant as any);
   const isRestricted = !isActive && !isTrialActive;
   const trialDaysLeft = isTrialActive && trialEndsAt
     ? Math.max(0, Math.ceil((trialEndsAt.getTime() - now) / (1000 * 60 * 60 * 24)))
@@ -185,12 +187,7 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
               <h2 className="text-3xl font-black text-slate-100 italic tracking-tight mb-2">Estado de Suscripción</h2>
               <div className="flex flex-wrap items-center gap-3 justify-center md:justify-start">
                 <span className="px-5 py-1.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 font-black rounded-full text-xs uppercase tracking-[0.1em]">
-                  {(() => {
-                    const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
-                    const isTrialActive = tenant && String(tenant.subscriptionStatus).toUpperCase() === 'TRIAL' && trialEndsAt && trialEndsAt.getTime() > Date.now();
-                    const effectivePlan = isTrialActive ? PlanTier.ENTERPRISE : (tenant ? tenant.plan : PlanTier.BASIC);
-                    return `${PLANS[effectivePlan].name}${isTrialActive ? ' (TRIAL)' : ''}`;
-                  })()}
+                  {`${PLANS[effectivePlan].name}${isTrialActive ? ' (TRIAL)' : ''}`}
                 </span>
                 <span className={`px-5 py-1.5 rounded-full text-xs font-black uppercase tracking-[0.1em] flex items-center gap-2 border ${tenant.subscriptionStatus === SubscriptionStatus.ACTIVE
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
@@ -230,12 +227,12 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
         {(Object.values(PLANS) as any).map((plan: any) => (
           <div
             key={plan.id}
-            className={`group relative flex flex-col p-10 rounded-[3rem] border-2 transition-all duration-500 ${tenant.plan === plan.id
+            className={`group relative flex flex-col p-10 rounded-[3rem] border-2 transition-all duration-500 ${effectivePlan === plan.id
               ? 'bg-blue-600/10 border-blue-500/50 shadow-2xl shadow-blue-500/10'
               : 'bg-slate-900/40 border-slate-800/80 hover:border-blue-500/30 hover:bg-slate-900/60 shadow-xl hover:shadow-blue-500/5'
               }`}
           >
-            {tenant.plan === plan.id && (
+            {effectivePlan === plan.id && (
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-blue-400 text-white text-[10px] font-black px-6 py-2 rounded-full uppercase tracking-widest shadow-xl">
                 Tu Plan Actual
               </div>
@@ -268,17 +265,17 @@ export const BillingPage: React.FC<{ tenant: Tenant, user: User, onUpdate: (t: T
             </ul>
 
             <button
-              disabled={tenant.plan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE}
+              disabled={effectivePlan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE}
               onClick={() => handleSubscribeClick(plan)}
-              className={`w-full py-5 rounded-[1.5rem] font-black text-lg transition-all flex items-center justify-center gap-3 ${tenant.plan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE
+              className={`w-full py-5 rounded-[1.5rem] font-black text-lg transition-all flex items-center justify-center gap-3 ${effectivePlan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE
                 ? 'bg-slate-800/50 text-slate-600 cursor-default border border-slate-700/50'
                 : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-xl active:scale-95 shadow-blue-600/20'
                 }`}
             >
-              {tenant.plan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE ? (
+              {effectivePlan === plan.id && tenant.subscriptionStatus === SubscriptionStatus.ACTIVE ? (
                 <>Plan Activo</>
               ) : (
-                <>{tenant.plan === plan.id ? 'Renovar Suscripción' : `Elegir ${plan.name}`} <Sparkles size={18} /></>
+                <>{effectivePlan === plan.id ? 'Renovar Suscripción' : `Elegir ${plan.name}`} <Sparkles size={18} /></>
               )}
             </button>
           </div>

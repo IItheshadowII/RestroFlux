@@ -12,6 +12,7 @@ import {
 import { db } from '../services/db';
 import { User, Role, Tenant } from '../types';
 import { PERMISSION_GROUPS, PERMISSIONS, PLANS } from '../constants';
+import { getEffectivePlan, isTrialActive } from '../utils/subscription';
 
 interface ModalProps {
   isOpen: boolean;
@@ -104,18 +105,8 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
 
   let userLimit = 0;
   if (effectiveTenant) {
-    const now = Date.now();
-    const status = (effectiveTenant as any).subscriptionStatus || (effectiveTenant as any).subscription_status;
-    const trialEndsAt = (effectiveTenant as any).trialEndsAt || (effectiveTenant as any).trial_ends_at;
-    const isTrial = status === 'TRIAL';
-    const isTrialActive = isTrial && trialEndsAt && new Date(trialEndsAt).getTime() > now;
-
-    if (isTrialActive) {
-      // Durante trial activo: hasta 3 usuarios totales (incluyendo admin)
-      userLimit = 3;
-    } else {
-      userLimit = PLANS[effectiveTenant.plan].limits.users;
-    }
+    const effectivePlan = getEffectivePlan(effectiveTenant as any);
+    userLimit = PLANS[effectivePlan].limits.users;
   }
 
   const canAddMoreUsers = userLimit > 0 ? activeUsersCount < userLimit : false;
@@ -720,10 +711,9 @@ export const UsersRolesPage: React.FC<{ tenantId: string; tenant?: Tenant | null
            <div className="space-y-2">
               <h4 className="text-2xl font-black text-white italic tracking-tight">¡Has alcanzado tu límite!</h4>
               {(() => {
-                const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
-                const isTrialActive = tenant && String(tenant.subscriptionStatus).toUpperCase() === 'TRIAL' && trialEndsAt && trialEndsAt.getTime() > Date.now();
-                const effectivePlan = isTrialActive ? PlanTier.ENTERPRISE : (tenant ? tenant.plan : PlanTier.BASIC);
-                return (<p className="text-slate-400 font-medium">Tu plan actual <b>{PLANS[effectivePlan].name}{isTrialActive ? ' (TRIAL)' : ''}</b> solo permite un máximo de <b>{userLimit}</b> usuarios.</p>);
+                const trialActive = isTrialActive(tenant);
+                const effectivePlan = getEffectivePlan(tenant as any);
+                return (<p className="text-slate-400 font-medium">Tu plan actual <b>{PLANS[effectivePlan].name}{trialActive ? ' (TRIAL)' : ''}</b> solo permite un máximo de <b>{userLimit}</b> usuarios.</p>);
               })()}
            </div>
            

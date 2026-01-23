@@ -24,6 +24,7 @@ import {
 import { db } from '../services/db';
 import { PlanTier, SubscriptionStatus } from '../types';
 import { PERMISSIONS, PLANS } from '../constants';
+import { isTrialActive as _isTrialActive, getEffectivePlan } from '../utils/subscription';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -59,11 +60,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
   const rolePermissions = user.permissions?.length ? user.permissions : (userRole?.permissions || []);
 
   // Determinar si está en TRIAL activo (no expirado)
-  // Comparar como strings para evitar problemas de enum vs string
-  const now = Date.now();
-  const trialEndsAt = tenant?.trialEndsAt ? new Date(tenant.trialEndsAt) : null;
-  const isTrial = tenant?.subscriptionStatus === 'TRIAL' || tenant?.subscriptionStatus === SubscriptionStatus.TRIAL;
-  const isTrialActive = isTrial && trialEndsAt && trialEndsAt.getTime() > now;
+  const isTrialActive = _isTrialActive(tenant);
 
   // Durante TRIAL activo: habilitar todas las funciones (como PRO/Enterprise)
   const permissions = isTrialActive ? PERMISSIONS.map(p => p.id) : rolePermissions;
@@ -84,8 +81,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
     
     // Cocina requiere plan multi-usuario, excepto durante TRIAL (donde está todo habilitado)
     if (item.id === 'kitchen' && tenant) {
-      const isMultiUserPlan = PLANS[tenant.plan].limits.users > 1;
-      return hasPerm && (isTrialActive || isMultiUserPlan);
+      const effectivePlan = getEffectivePlan(tenant);
+      const isMultiUserPlan = PLANS[effectivePlan].limits.users > 1;
+      return hasPerm && isMultiUserPlan;
     }
     
     return hasPerm;
@@ -94,7 +92,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
   const getPlanBadge = () => {
     if (!tenant) return null;
     // Plan efectivo: durante TRIAL activo comportarse como ENTERPRISE
-    const effectivePlan = isTrialActive ? PlanTier.ENTERPRISE : (tenant.plan || PlanTier.BASIC);
+    const effectivePlan = getEffectivePlan(tenant);
     const displayPlanName = isTrialActive ? `${PLANS[PlanTier.ENTERPRISE].name} (TRIAL)` : PLANS[effectivePlan].name;
     const isBasic = effectivePlan === PlanTier.BASIC;
     const isPro = effectivePlan === PlanTier.PRO;
@@ -116,7 +114,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
           <div className="relative">
             {isTrialBadge ? <Clock size={20} className="text-emerald-400" /> : isBasic ? <Shield size={20} className="text-slate-400" /> : isPro ? <Zap size={20} className="text-blue-400" /> : <Crown size={20} className="text-purple-400" />}
             {/* Pequeño punto de estatus activo */}
-            <div className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${isTrial ? 'bg-emerald-400' : isBasic ? 'bg-slate-500' : isPro ? 'bg-blue-400' : 'bg-purple-400'}`}></div>
+            <div className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${isTrialBadge ? 'bg-emerald-400' : isBasic ? 'bg-slate-500' : isPro ? 'bg-blue-400' : 'bg-purple-400'}`}></div>
           </div>
         </button>
       );
@@ -128,7 +126,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
         className={`w-full p-4 rounded-2xl border flex items-center gap-3 transition-all hover:scale-[1.02] active:scale-95 group/plan shadow-xl ${colors.bg} ${colors.glow}`}
       >
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${colors.iconBg}`}>
-          {isTrial ? <Clock size={18} /> : isBasic ? <Shield size={18} /> : isPro ? <Zap size={18} /> : <Crown size={18} />}
+          {isTrialBadge ? <Clock size={18} /> : isBasic ? <Shield size={18} /> : isPro ? <Zap size={18} /> : <Crown size={18} />}
         </div>
         <div className="text-left flex-1 min-w-0">
           <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest truncate">Plan Actual</p>
