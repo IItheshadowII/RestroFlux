@@ -714,20 +714,40 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
                 </button>
               )}
 
-              <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-3xl flex items-center justify-center mb-1 transition-all duration-500 group-hover:scale-110 shadow-2xl ${
-                table.status === 'AVAILABLE' ? 'bg-slate-800 text-slate-400' : 
-                table.status === 'OCCUPIED' ? (hasReady ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white shadow-blue-500/30') :
-                'bg-amber-500/20 text-amber-400'
+              {/* Icono SVG de mesa con platos */}
+              <div className={`p-5 rounded-3xl transition-all duration-300 ${
+                table.status === 'AVAILABLE' 
+                  ? 'bg-emerald-600/20 text-emerald-400'
+                  : table.status === 'OCCUPIED'
+                    ? hasReady ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white'
+                    : 'bg-orange-500 text-white'
               }`}>
-                <span className="text-2xl sm:text-3xl font-black italic">{table.number}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-10 h-10" fill="currentColor">
+                  <rect x="6" y="20" width="36" height="3" rx="1.5"/>
+                  <ellipse cx="24" cy="21.5" rx="18" ry="2" opacity="0.3"/>
+                  <circle cx="16" cy="14" r="3" opacity="0.6"/>
+                  <circle cx="32" cy="14" r="3" opacity="0.6"/>
+                  <circle cx="24" cy="10" r="2.5" opacity="0.5"/>
+                  <path d="M8 23 L10 38 L38 38 L40 23" strokeWidth="2" stroke="currentColor" fill="none" opacity="0.4"/>
+                  <line x1="10" y1="38" x2="10" y2="42" strokeWidth="2" stroke="currentColor"/>
+                  <line x1="38" y1="38" x2="38" y2="42" strokeWidth="2" stroke="currentColor"/>
+                </svg>
               </div>
-              
-              <div className="text-center">
-                <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">{table.zone}</p>
-                <div className="flex items-center justify-center gap-2 text-slate-300">
-                  <Users size={12} className="opacity-50" />
-                  <span className="text-xs sm:text-sm font-bold">{table.capacity}</span>
+              <div className="text-center w-full">
+                <div className="text-4xl font-black text-slate-100 italic mb-1">{table.number}</div>
+                <div className="text-xs font-black uppercase tracking-widest text-slate-500">{table.zone}</div>
+                <div className="mt-2 flex items-center justify-center gap-1 text-slate-600">
+                  <Users size={14} />
+                  <span className="text-xs font-bold">{table.capacity}</span>
                 </div>
+                {table.status === 'OCCUPIED' && tableOrder && (
+                  <div className={`mt-3 px-4 py-2 rounded-xl font-black text-sm ${
+                    hasReady ? 'bg-amber-600/30 text-amber-200' : 'bg-blue-600/30 text-blue-200'
+                  }`}>
+                    <div className="text-[10px] uppercase tracking-widest opacity-70">Consumo</div>
+                    <div className="text-lg">${totalConsumo.toLocaleString()}</div>
+                  </div>
+                )}
               </div>
 
               {table.status === 'OCCUPIED' && (
