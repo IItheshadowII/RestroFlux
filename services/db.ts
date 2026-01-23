@@ -5,9 +5,14 @@ import { getEffectivePlan } from '../utils/subscription';
 
 // Configuración de entorno
 const env = (import.meta as any).env || {};
-const APP_MODE = env.VITE_APP_MODE || 'LOCAL'; // 'LOCAL' or 'CLOUD'
+// AUTO: detecta CLOUD si se pasa VITE_API_URL, o usar VITE_APP_MODE explícito
+const APP_MODE = env.VITE_APP_MODE || (env.VITE_API_URL ? 'CLOUD' : 'LOCAL'); // 'LOCAL' or 'CLOUD'
 const API_URL = env.VITE_API_URL || ''; // URL del backend en modo Cloud
 const CLOUD_URL = env.VITE_CLOUD_URL || 'https://app.gastroflow.cloud'; // URL para verificar licencia en modo Local
+const LICENSE_KEY = env.VITE_LICENSE_KEY || '';
+const LICENSE_CHECK_INTERVAL_DAYS = parseInt(env.VITE_LICENSE_CHECK_INTERVAL_DAYS || '1', 10);
+const LICENSE_GRACE_DAYS = parseInt(env.VITE_LICENSE_GRACE_DAYS || '7', 10);
+const INSTANCE_ID = env.VITE_INSTANCE_ID || 'local-instance';
 
 // ==========================================
 // API HELPER PARA MODO CLOUD
@@ -233,21 +238,45 @@ class DBService {
   async validateSubscription(tenantId: string): Promise<boolean> {
     if (APP_MODE === 'CLOUD') return true;
 
+    const cacheKey = `gastroflow_license_cache_${tenantId}`;
+    const lastCheckKey = `gastroflow_last_license_check_${tenantId}`;
+
+    // Usar cache si la comprobación reciente está dentro del intervalo configurado
     try {
+      const lastCheck = localStorage.getItem(lastCheckKey);
+      const cached = localStorage.getItem(cacheKey);
+      if (lastCheck && cached) {
+        const msSince = Date.now() - parseInt(lastCheck, 10);
+        if (msSince < LICENSE_CHECK_INTERVAL_DAYS * 24 * 60 * 60 * 1000) {
+          const data = JSON.parse(cached);
+          return !!data.valid;
+        }
+      }
+
       console.log('Verificando licencia on-premise...');
-      const licenseKey = env.VITE_LICENSE_KEY || '';
       const res = await fetch(`${CLOUD_URL}/api/license/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId, licenseKey })
+        body: JSON.stringify({ tenantId, licenseKey: LICENSE_KEY, instanceId: INSTANCE_ID })
       });
 
       if (!res.ok) {
         console.warn('Licencia no válida o servidor no disponible');
+        // si hay cache válida dentro del periodo de gracia, permitir
+        if (lastCheck) {
+          const daysSinceCheck = (Date.now() - parseInt(lastCheck, 10)) / (1000 * 60 * 60 * 24);
+          if (daysSinceCheck < LICENSE_GRACE_DAYS && cached) {
+            try { const data = JSON.parse(cached); console.log('Usando cache de licencia en periodo de gracia'); return !!data.valid; } catch {}
+          }
+        }
         return false;
       }
 
       const data = await res.json();
+      // Guardar cache y timestamp
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      localStorage.setItem(lastCheckKey, Date.now().toString());
+
       if (data.valid) {
         // Actualizar estado local con los datos de la nube
         const tenants = this.getLocalData<Tenant>('tenants');
@@ -265,13 +294,12 @@ class DBService {
       return false;
     } catch (e) {
       console.error("No se pudo verificar la licencia online", e);
-      // En modo offline, dar un período de gracia (ej: 7 días sin conexión)
-      const lastCheck = localStorage.getItem('gastroflow_last_license_check');
-      if (lastCheck) {
-        const daysSinceCheck = (Date.now() - parseInt(lastCheck)) / (1000 * 60 * 60 * 24);
-        if (daysSinceCheck < 7) {
-          console.log('Período de gracia offline activo');
-          return true;
+      const lastCheck = localStorage.getItem(lastCheckKey);
+      const cached = localStorage.getItem(cacheKey);
+      if (lastCheck && cached) {
+        const daysSinceCheck = (Date.now() - parseInt(lastCheck, 10)) / (1000 * 60 * 60 * 24);
+        if (daysSinceCheck < LICENSE_GRACE_DAYS) {
+          try { const data = JSON.parse(cached); console.log('Período de gracia offline activo (cache)'); return !!data.valid; } catch {}
         }
       }
       return false;

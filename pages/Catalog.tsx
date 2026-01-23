@@ -381,6 +381,7 @@ export const CatalogPage: React.FC<{ tenantId: string; user: User; isCloud?: boo
         stockMin: 5,
         imageUrl: capturedImage
       });
+      setGeneratedImageUrl(capturedImage);
       setIsAiModalOpen(false);
       setModalType('product');
       setIsModalOpen(true);
@@ -529,7 +530,7 @@ export const CatalogPage: React.FC<{ tenantId: string; user: User; isCloud?: boo
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
-                           <button onClick={() => { setModalType('product'); setEditingItem(product); setGeneratedImageUrl(product.imageUrl || null); setIsModalOpen(true); }} className="p-3 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-xl transition-all shadow-lg active:scale-90"><Edit2 size={18} /></button>
+                           <button onClick={() => { setModalType('product'); setEditingItem(product); if (product.imageUrl) { setGeneratedImageUrl(product.imageUrl); } setIsModalOpen(true); }} className="p-3 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-xl transition-all shadow-lg active:scale-90"><Edit2 size={18} /></button>
                            <button onClick={() => handleDelete('products', product.id)} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white rounded-xl transition-all shadow-lg active:scale-90"><Trash2 size={18} /></button>
                         </div>
                       </td>

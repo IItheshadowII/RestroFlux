@@ -685,18 +685,23 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
           const hasReady = tableOrder && Array.isArray(tableOrder.items)
             ? tableOrder.items.some(i => i.status === 'READY')
             : false;
+          const items = tableOrder?.items || [];
+          const totalConsumo = items.reduce((sum, item) => {
+            const product = products.find(p => p.id === item.productId);
+            return sum + (product ? product.price * item.quantity : 0);
+          }, 0);
           
           return (
             <div 
               key={table.id}
               data-tour={idx === 0 ? 'first-table' : undefined}
               onClick={() => handleTableClick(table)}
-              className={`relative group p-6 sm:p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-500 flex flex-col items-center justify-center gap-4 ${
+              className={`relative group p-6 sm:p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-500 flex flex-col items-center justify-center gap-3 shadow-xl hover:scale-105 ${
                 table.status === 'AVAILABLE' 
-                  ? 'bg-slate-900/40 border-slate-800 hover:border-emerald-500/50' 
+                  ? 'bg-emerald-500/10 border-emerald-500/40 hover:border-emerald-400 hover:shadow-emerald-500/20' 
                   : table.status === 'OCCUPIED'
-                    ? hasReady ? 'bg-emerald-500/10 border-emerald-500/40 animate-pulse shadow-emerald-500/10' : 'bg-blue-500/10 border-blue-500/40 hover:border-blue-500/70 shadow-lg shadow-blue-500/5'
-                    : 'bg-amber-500/5 border-amber-500/20 hover:border-amber-500/50'
+                    ? hasReady ? 'bg-amber-500/20 border-amber-500 animate-pulse shadow-amber-500/30' : 'bg-blue-500/20 border-blue-500/60 hover:border-blue-400 shadow-blue-500/20'
+                    : 'bg-orange-500/15 border-orange-500/50 hover:border-orange-400 shadow-orange-500/20'
               }`}
             >
               {/* Delete Button (Solo visible en hover para mesas libres) */}
