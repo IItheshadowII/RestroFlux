@@ -62,8 +62,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
   // Determinar si está en TRIAL activo (no expirado)
   const isTrialActive = _isTrialActive(tenant);
 
-  // Durante TRIAL activo: habilitar todas las funciones (como PRO/Enterprise)
-  const permissions = isTrialActive ? PERMISSIONS.map(p => p.id) : rolePermissions;
+  // Usar siempre los permisos del usuario/rol para el menú; no sobreescribir por TRIAL.
+  const permissions = rolePermissions;
 
   const menuItems = [
     { id: 'tables', label: 'Salón', icon: TableIcon, permission: 'tables.view' },
