@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
+import { OnboardingTourProvider } from './providers/OnboardingTourProvider';
 import { CatalogPage } from './pages/Catalog';
 import { TablesPage } from './pages/Tables';
 import { UsersRolesPage } from './pages/UsersRoles';
@@ -1882,6 +1883,7 @@ const App: React.FC = () => {
   const hasAccess = isTrialActive || !pagePermissionMap[currentActivePage] || permissions.includes(pagePermissionMap[currentActivePage]);
 
   return (
+    <OnboardingTourProvider>
     <Layout
       user={user}
       tenant={tenant}
@@ -1942,6 +1944,7 @@ const App: React.FC = () => {
         </>
       )}
     </Layout>
+    </OnboardingTourProvider>
   );
 };
 

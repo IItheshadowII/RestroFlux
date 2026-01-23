@@ -310,6 +310,18 @@ const ensureSchema = async () => {
       ON CONFLICT (id) DO NOTHING;
     `);
 
+    // Onboarding / Tour per-user
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_onboarding (
+        user_id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL,
+        onboarding_completed BOOLEAN DEFAULT FALSE,
+        onboarding_dismissed BOOLEAN DEFAULT FALSE,
+        onboarding_version VARCHAR(50),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     // Roles / Users: asegurar columnas y constraints
     await client.query(`
       ALTER TABLE roles
@@ -578,6 +590,76 @@ const requirePermission = (perm) => (req, res, next) => {
   if (!perms.includes(perm)) return res.status(403).json({ error: `Permiso requerido: ${perm}` });
   return next();
 };
+
+// -----------------------------
+// Onboarding endpoints (per user)
+// -----------------------------
+
+app.get('/api/me/onboarding', requireTenantUser, async (req, res) => {
+  try {
+    const userId = req.auth.sub;
+    const tenantId = req.auth.tenantId;
+    const r = await pool.query(
+      `SELECT onboarding_completed, onboarding_dismissed, onboarding_version, updated_at
+       FROM user_onboarding WHERE user_id = $1 LIMIT 1`,
+      [userId]
+    );
+    const row = r.rows[0] || null;
+    if (!row) {
+      return res.json({ onboarding_completed: false, onboarding_dismissed: false, onboarding_version: null });
+    }
+    return res.json({ onboarding_completed: row.onboarding_completed, onboarding_dismissed: row.onboarding_dismissed, onboarding_version: row.onboarding_version, updated_at: row.updated_at });
+  } catch (err) {
+    console.error('GET /api/me/onboarding error', err);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
+app.put('/api/me/onboarding', requireTenantUser, async (req, res) => {
+  try {
+    const userId = req.auth.sub;
+    const tenantId = req.auth.tenantId;
+    const { onboarding_completed, onboarding_dismissed, onboarding_version } = req.body || {};
+
+    // Upsert
+    await pool.query(
+      `INSERT INTO user_onboarding (user_id, tenant_id, onboarding_completed, onboarding_dismissed, onboarding_version, updated_at)
+       VALUES ($1, $2, COALESCE($3, FALSE), COALESCE($4, FALSE), $5, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         onboarding_completed = COALESCE(EXCLUDED.onboarding_completed, user_onboarding.onboarding_completed),
+         onboarding_dismissed = COALESCE(EXCLUDED.onboarding_dismissed, user_onboarding.onboarding_dismissed),
+         onboarding_version = COALESCE(EXCLUDED.onboarding_version, user_onboarding.onboarding_version),
+         updated_at = NOW();
+      `,
+      [userId, tenantId, onboarding_completed, onboarding_dismissed, onboarding_version]
+    );
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('PUT /api/me/onboarding error', err);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
+
+// Simple stats endpoint used by the tour to validate conditions (counts)
+app.get('/api/me/stats', requireTenantUser, async (req, res) => {
+  try {
+    const tenantId = req.auth.tenantId;
+    const stats = {};
+    const r1 = await pool.query('SELECT COUNT(*)::int AS category_count FROM categories WHERE tenant_id = $1', [tenantId]);
+    const r2 = await pool.query('SELECT COUNT(*)::int AS product_count FROM products WHERE tenant_id = $1', [tenantId]);
+    const r3 = await pool.query('SELECT COUNT(*)::int AS table_count FROM tables WHERE tenant_id = $1', [tenantId]);
+    const r4 = await pool.query('SELECT COALESCE(SUM((jsonb_array_length(items))),0)::int AS order_item_count FROM orders WHERE tenant_id = $1', [tenantId]);
+    stats.categoryCount = r1.rows[0]?.category_count || 0;
+    stats.productCount = r2.rows[0]?.product_count || 0;
+    stats.tableCount = r3.rows[0]?.table_count || 0;
+    stats.orderItemCount = r4.rows[0]?.order_item_count || 0;
+    return res.json(stats);
+  } catch (err) {
+    console.error('GET /api/me/stats error', err);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
 
 app.use(authMiddleware);
 

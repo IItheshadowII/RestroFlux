@@ -35,9 +35,10 @@ interface LayoutProps {
   setActivePage: (page: string) => void;
 }
 
-const NavItem = ({ icon: Icon, label, active, onClick, collapsed, alert }: any) => (
+  const NavItem = ({ icon: Icon, label, active, onClick, collapsed, alert, dataTour }: any) => (
   <button
     onClick={onClick}
+    data-tour={dataTour}
     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
       active 
         ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30 shadow-lg shadow-blue-500/5' 
@@ -181,6 +182,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
               active={activePage === item.id}
               onClick={() => setActivePage(item.id)}
               collapsed={collapsed}
+              dataTour={`menu-${item.id}`}
             />
           ))}
         </nav>
@@ -238,6 +240,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, tenant, onLogout
              }`}>
               {user.name.charAt(0)}
             </div>
+             <button
+               onClick={() => window.dispatchEvent(new CustomEvent('startOnboarding'))}
+               title="Iniciar Tour"
+               className="ml-4 p-2 rounded-xl hover:bg-slate-800 text-slate-400 transition-all"
+             >
+               <span className="text-sm font-bold">Tour</span>
+             </button>
           </div>
         </header>
         

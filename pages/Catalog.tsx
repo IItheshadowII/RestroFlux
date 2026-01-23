@@ -408,9 +408,9 @@ export const CatalogPage: React.FC<{ tenantId: string; user: User; isCloud?: boo
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800">
-          <button onClick={() => setActiveTab('products')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'products' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Productos</button>
-          <button onClick={() => setActiveTab('categories')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'categories' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Categorías</button>
-          <button onClick={() => setActiveTab('history')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Historial</button>
+          <button data-tour="tab-products" onClick={() => setActiveTab('products')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'products' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Productos</button>
+          <button data-tour="tab-categories" onClick={() => setActiveTab('categories')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'categories' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Categorías</button>
+          <button data-tour="tab-history" onClick={() => setActiveTab('history')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Historial</button>
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto">
@@ -418,6 +418,7 @@ export const CatalogPage: React.FC<{ tenantId: string; user: User; isCloud?: boo
             <Sparkles size={16} /> Añadir por Foto (IA)
           </button>
           <button 
+            data-tour={activeTab === 'categories' ? 'add-category' : 'add-product'}
             onClick={() => { 
               setModalType(activeTab === 'categories' ? 'category' : 'product'); 
               setEditingItem(null); 
@@ -545,6 +546,7 @@ export const CatalogPage: React.FC<{ tenantId: string; user: User; isCloud?: boo
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Add Category Quick Card */}
           <button 
+            data-tour="add-category"
             onClick={() => { setModalType('category'); setEditingItem(null); setIsModalOpen(true); }}
             className="bg-slate-900/40 border-2 border-dashed border-slate-800 p-8 rounded-[2rem] hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group flex flex-col items-center justify-center gap-4 min-h-[160px]"
           >

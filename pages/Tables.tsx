@@ -668,6 +668,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
           ))}
         </div>
         <button 
+          data-tour="add-table"
           onClick={() => { setEditingTable(null); setIsModalOpen(true); }}
           className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black transition-all shadow-xl shadow-blue-600/20 active:scale-95"
         >
@@ -677,7 +678,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
-        {filteredTables.map(table => {
+        {filteredTables.map((table, idx) => {
           const tableOrder = isCloud
             ? orders.find(o => o.tableId === table.id && o.status === 'OPEN')
             : db.getActiveOrderForTable(table.id, tenantId);
@@ -688,6 +689,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
           return (
             <div 
               key={table.id}
+              data-tour={idx === 0 ? 'first-table' : undefined}
               onClick={() => handleTableClick(table)}
               className={`relative group p-6 sm:p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-500 flex flex-col items-center justify-center gap-4 ${
                 table.status === 'AVAILABLE' 
@@ -790,7 +792,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
 
              <div className="flex gap-4">
                 {canSendToKitchen && (
-                  <button onClick={handleSendToKitchen} className="flex-1 py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl font-black transition-all flex items-center justify-center gap-3 active:scale-95 animate-pulse"><Send size={18} /> Enviar a Cocina</button>
+                  <button data-tour="send-to-kitchen" onClick={handleSendToKitchen} className="flex-1 py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl font-black transition-all flex items-center justify-center gap-3 active:scale-95 animate-pulse"><Send size={18} /> Enviar a Cocina</button>
                 )}
                 {canServeReady && (
                   <button onClick={handleServeReadyItems} className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black transition-all flex items-center justify-center gap-3 active:scale-95 animate-bounce"><CheckCircle size={20} /> Entregar Todo</button>
