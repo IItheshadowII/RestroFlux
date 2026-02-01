@@ -1940,7 +1940,6 @@ const App: React.FC = () => {
           {currentActivePage === 'cash' && <CashierPage tenantId={tenant.id} user={user} isCloud={isCloud} />}
           {currentActivePage === 'users' && <UsersRolesPage tenantId={tenant.id} tenant={tenant} isCloud={isCloud} />}
           {currentActivePage === 'billing' && <BillingPage tenant={tenant} user={user} onUpdate={refreshTenantData} />}
-          {currentActivePage === 'cash' && <CashierPage tenantId={tenant.id} user={user} />}
         </>
       )}
     </Layout>
