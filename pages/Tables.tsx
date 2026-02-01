@@ -40,21 +40,9 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
   const [tables, setTables] = useState<Table[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-                const total = items.reduce((acc, i) => acc + i.price * i.quantity, 0);
-                order = { ...order, items, total };
+  const [filterZone, setFilterZone] = useState('all');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
-                const saved = await saveOrderToApi(order);
-                // Si la orden estaba vacía antes de agregar este ítem, marcar la mesa como OCCUPIED
-                if (wasEmpty) {
-                  try {
-                    await fetch(`/api/tables/${activeTable.id}`, { method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify({ status: 'OCCUPIED' }) });
-                  } catch (e) {
-                    console.error('No se pudo actualizar el estado de la mesa a OCCUPIED', e);
-                  }
-                  // Actualizar estado local para reflejar de inmediato la mesa ocupada
-                  setTables(prev => prev.map(t => t.id === activeTable.id ? { ...t, status: 'OCCUPIED' } : t));
-                  setActiveTable(prev => prev && prev.id === activeTable.id ? { ...prev, status: 'OCCUPIED' } as Table : prev);
-                }
   const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [activeTable, setActiveTable] = useState<Table | null>(null);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
@@ -77,9 +65,6 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
   };
 
   const parseItems = (raw: any): OrderItem[] => {
-              // Reflejar el cambio de estado en la UI local
-              setTables(prev => prev.map(t => t.id === activeTable!.id ? { ...t, status: 'OCCUPIED' } : t));
-              setActiveTable(prev => prev && prev.id === activeTable!.id ? { ...prev, status: 'OCCUPIED' } as Table : prev);
     if (Array.isArray(raw)) return raw as OrderItem[];
     if (typeof raw === 'string') {
       try {
