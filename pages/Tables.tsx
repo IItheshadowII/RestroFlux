@@ -460,6 +460,7 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
           openedAt: new Date().toISOString(),
         } as Order;
 
+        const wasEmpty = !order.items || (order.items || []).length === 0;
         const items = [...order.items];
         const existing = items.find(i => i.productId === product.id && i.status === 'PENDING');
         if (existing) {
@@ -475,8 +476,6 @@ export const TablesPage: React.FC<{ tenantId: string; user: User; tenant?: Tenan
         }
         const total = items.reduce((acc, i) => acc + i.price * i.quantity, 0);
         order = { ...order, items, total };
-
-        const wasEmpty = (order.items || []).length === 0;
         const saved = await saveOrderToApi(order);
         // Si la orden estaba vacía antes de agregar este ítem, marcar la mesa como OCCUPIED
         if (wasEmpty) {
