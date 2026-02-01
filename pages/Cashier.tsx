@@ -131,7 +131,7 @@ export const CashierPage: React.FC<{ tenantId: string, user: User; isCloud?: boo
     }
   };
 
-  const handleOpenShift = () => {
+  const handleOpenShift = async () => {
     if (initialCash < 0) return alert("El monto inicial no puede ser negativo");
     setLoading(true);
     try {
@@ -139,7 +139,14 @@ export const CashierPage: React.FC<{ tenantId: string, user: User; isCloud?: boo
         const token = localStorage.getItem('restoflux_token');
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        fetch('/api/shifts', { method: 'POST', headers, body: JSON.stringify({ initial_cash: initialCash }) }).then(() => refreshData());
+        const res = await fetch('/api/shifts', { method: 'POST', headers, body: JSON.stringify({ initial_cash: initialCash }) });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          const msg = data?.error || 'No se pudo abrir el turno de caja.';
+          alert(msg);
+          return;
+        }
+        await refreshData();
         setInitialCash(0);
       } else {
         db.openShift(tenantId, user.id, initialCash);
