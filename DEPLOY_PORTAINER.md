@@ -25,6 +25,7 @@ Notas:
 - No uses `env_file` en Portainer Repository.
 - El compose ya usa defaults seguros y variables inyectadas por Portainer.
 - El hostname interno de PostgreSQL es `restroflux-postgres`.
+- PostgreSQL y MinIO quedan internos al stack por defecto; solo la app publica puerto al host.
 
 ## Opción 2: Portainer Stack en Swarm
 
@@ -66,3 +67,4 @@ Notas:
 3. Confirmar que la app ya no busque `.env` en el host de Portainer.
 4. Confirmar que PostgreSQL resuelva por `restroflux-postgres`.
 5. Si usas PostgreSQL interno del stack, dejar `DATABASE_SSL=false`.
+6. No publicar `5432`, `9000` ni `9001` en Portainer salvo necesidad operativa concreta.
