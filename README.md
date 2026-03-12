@@ -42,12 +42,14 @@ Opcional (para funcionalidades completas):
 
 ## Variables de entorno
 
-### Backend (`.env`)
+### Backend
 
 Las principales variables usadas por `server.js` son:
 
 - `PORT` — Puerto HTTP (por defecto `3000`).
 - `DATABASE_URL` — Cadena de conexión PostgreSQL.
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` — alternativa a `DATABASE_URL` para despliegues Docker/Portainer.
+- `DATABASE_SSL`, `DATABASE_SSL_REJECT_UNAUTHORIZED` — control explícito de SSL para PostgreSQL.
 - `JWT_SECRET` — Clave para firmar JWT.
 - `MP_ACCESS_TOKEN` — Token de acceso de Mercado Pago.
 - `PUBLIC_BASE_URL` — URL pública base para generar links (reset de password, etc.).
@@ -65,7 +67,7 @@ Las variables leídas en `services/db.ts` son:
 - `VITE_CLOUD_URL` — URL de la nube central (licencias on-premise).
 - `VITE_LICENSE_KEY`, `VITE_INSTANCE_ID`, `VITE_LICENSE_CHECK_INTERVAL_DAYS`, `VITE_LICENSE_GRACE_DAYS` — gestión de licencias en instalaciones on-premise.
 
-Estas variables deben definirse en los archivos `.env.*` de Vite según el entorno (`.env.local`, `.env.production`, etc.).
+En Docker/Portainer, las variables `VITE_*` se pasan como build args. El repo ya no depende de un `.env` real para desplegar.
 
 ## Ejecutar en desarrollo (local)
 
@@ -85,10 +87,10 @@ Estas variables deben definirse en los archivos `.env.*` de Vite según el entor
 
    Revisa la carpeta `db/` y `PRODUCTION_GUIDE.md` para el esquema. En un entorno local simple basta con ejecutar los scripts SQL necesarios sobre la DB apuntada por `DATABASE_URL`.
 
-4. Configurar `.env` para el backend (mínimo):
+4. Configurar variables del backend (mínimo):
 
    ```env
-   DATABASE_URL=postgresql://restoflux:restoflux@localhost:5432/restoflux
+   DATABASE_URL=postgresql://restroflux:tu_password@localhost:5432/restroflux
    JWT_SECRET=dev_secret_key
    ```
 
@@ -132,14 +134,14 @@ Estas variables deben definirse en los archivos `.env.*` de Vite según el entor
    docker compose up -d
    ```
 
-   Asegúrate de tener un archivo `.env` en la raíz con las variables necesarias.
+   El compose raíz ya no usa `env_file`. Para Portainer Repository, carga las variables en la UI usando [.env.example](.env.example) como referencia. Para Swarm usa [stack.yml](stack.yml) con una imagen ya publicada.
 
 ## Modo CLOUD vs LOCAL
 
 El archivo `services/db.ts` actúa como **adaptador de datos**:
 
 - En **modo LOCAL** (por defecto), persiste en `localStorage` y simula toda la lógica de negocio en el cliente.
-- En **modo CLOUD**, habla con el backend mediante HTTP (`VITE_API_URL`), manteniendo la misma interfaz que usa el frontend.
+- En **modo CLOUD**, habla con el backend mediante HTTP (`VITE_API_URL`, por defecto `/api` en despliegues Docker), manteniendo la misma interfaz que usa el frontend.
 
 Gracias a este diseño, para pasar de MVP local a SaaS en producción no es necesario reescribir la UI; basta con implementar los endpoints equivalentes en el backend y configurar las variables de entorno adecuadas (ver `PRODUCTION_GUIDE.md`).
 
@@ -152,4 +154,5 @@ La integración con IA (Gemini) se realiza desde el backend (`server.js`) utiliz
 - Guía de migración y arquitectura de producción: `PRODUCTION_GUIDE.md`.
 - Infraestructura on-premise y empaquetado: carpeta `infra/`.
 - Scripts de base de datos y migraciones: carpeta `db/`.
+- Despliegue Portainer/Swarm: [DEPLOY_PORTAINER.md](DEPLOY_PORTAINER.md).
 

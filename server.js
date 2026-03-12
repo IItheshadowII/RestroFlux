@@ -20,6 +20,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // HTTP server (required for Socket.IO)
 const httpServer = http.createServer(app);
@@ -28,7 +29,7 @@ const JWT_SECRET = process.env.JWT_SECRET || '';
 const GLOBAL_ADMIN_BOOTSTRAP_TOKEN = process.env.GLOBAL_ADMIN_BOOTSTRAP_TOKEN || '';
 const ENFORCE_AUTH = process.env.MULTI_TENANT_ENFORCE_AUTH
   ? process.env.MULTI_TENANT_ENFORCE_AUTH === 'true'
-  : process.env.NODE_ENV === 'production';
+  : NODE_ENV === 'production';
 
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 
@@ -37,6 +38,33 @@ const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || '';
+
+const envFlagEnabled = (value) => {
+  if (typeof value !== 'string') return false;
+  return ['1', 'true', 'yes', 'on', 'require'].includes(value.toLowerCase());
+};
+
+const buildDatabaseUrl = () => {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+
+  const host = process.env.DB_HOST || '';
+  const port = process.env.DB_PORT || '5432';
+  const database = process.env.DB_NAME || '';
+  const user = process.env.DB_USER || '';
+  const password = process.env.DB_PASSWORD || '';
+
+  if (!host || !database || !user) return '';
+
+  const encodedUser = encodeURIComponent(user);
+  const encodedPassword = password ? `:${encodeURIComponent(password)}` : '';
+  return `postgresql://${encodedUser}${encodedPassword}@${host}:${port}/${database}`;
+};
+
+const DATABASE_URL = buildDatabaseUrl();
+const DATABASE_SSL = envFlagEnabled(process.env.DATABASE_SSL)
+  || envFlagEnabled(process.env.DATABASE_SSL_MODE)
+  || envFlagEnabled(process.env.PGSSLMODE);
+const DATABASE_SSL_REJECT_UNAUTHORIZED = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
 
 let mailTransporter = null;
 const getMailer = () => {
@@ -198,8 +226,8 @@ app.use(express.json());
 // Database Connection
 const { Pool } = pg;
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  connectionString: DATABASE_URL,
+  ssl: DATABASE_SSL ? { rejectUnauthorized: DATABASE_SSL_REJECT_UNAUTHORIZED } : false
 });
 
 // Mercado Pago Initialization

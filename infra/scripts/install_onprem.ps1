@@ -66,7 +66,7 @@ $compose2 = Join-Path $repoRoot 'infra\docker-compose.onprem.yml'
 Write-Host "Levantando contenedores con docker compose..." -ForegroundColor Cyan
 Push-Location $repoRoot
 try {
-  & docker compose -f "$compose1" -f "$compose2" up -d --build
+  & docker compose --env-file "$envFile" -f "$compose1" -f "$compose2" up -d --build
 } catch {
   Write-Host "Error ejecutando docker compose: $_" -ForegroundColor Red
   Pop-Location
@@ -105,7 +105,7 @@ else {
   }
 }
 
-Write-Host "Instalación finalizada. Revisa logs con: docker compose -f $compose1 -f $compose2 logs -f app" -ForegroundColor Green
+Write-Host "Instalación finalizada. Revisa logs con: docker compose -f $compose1 -f $compose2 logs -f restroflux-app" -ForegroundColor Green
 Write-Host "Puedes ver estado de licencia desde la UI o forzar activación contra tu servidor central." -ForegroundColor Cyan
 
 exit 0

@@ -5,10 +5,13 @@ import { getEffectivePlan } from '../utils/subscription';
 
 // Configuración de entorno
 const env = (import.meta as any).env || {};
+const isBrowser = typeof window !== 'undefined';
+const hostname = isBrowser ? window.location.hostname : '';
+const isLocalHostname = hostname === 'localhost' || hostname === '127.0.0.1';
 // AUTO: detecta CLOUD si se pasa VITE_API_URL, o usar VITE_APP_MODE explícito
-const APP_MODE = env.VITE_APP_MODE || (env.VITE_API_URL ? 'CLOUD' : 'LOCAL'); // 'LOCAL' or 'CLOUD'
-const API_URL = env.VITE_API_URL || ''; // URL del backend en modo Cloud
-const CLOUD_URL = env.VITE_CLOUD_URL || 'https://app.restoflux.cloud'; // URL para verificar licencia en modo Local
+const APP_MODE = env.VITE_APP_MODE || (env.VITE_API_URL ? 'CLOUD' : (isLocalHostname ? 'LOCAL' : 'CLOUD')); // 'LOCAL' or 'CLOUD'
+const API_URL = env.VITE_API_URL || '/api'; // URL del backend en modo Cloud
+const CLOUD_URL = env.VITE_CLOUD_URL || 'https://app.restroflux.example.com'; // URL para verificar licencia en modo Local
 const LICENSE_KEY = env.VITE_LICENSE_KEY || '';
 const LICENSE_CHECK_INTERVAL_DAYS = parseInt(env.VITE_LICENSE_CHECK_INTERVAL_DAYS || '1', 10);
 const LICENSE_GRACE_DAYS = parseInt(env.VITE_LICENSE_GRACE_DAYS || '7', 10);
@@ -60,7 +63,7 @@ class ApiClient {
   }
 }
 
-const apiClient = new ApiClient(API_URL || '/api');
+const apiClient = new ApiClient(API_URL);
 
 const DEFAULT_ROLES = [
   {

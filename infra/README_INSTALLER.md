@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\install_onprem.ps1 -LicenseKey "GF-XX
 3. Ver logs:
 
 ```powershell
-docker compose -f ..\docker-compose.yml -f ..\docker-compose.onprem.yml logs -f app
+docker compose -f ..\docker-compose.yml -f ..\docker-compose.onprem.yml logs -f restroflux-app
 ```
 
 Backups
@@ -48,5 +48,6 @@ powershell -ExecutionPolicy Bypass -File .\restore.ps1 -BackupSql "..\backups\pg
 
 Notas
 - El script asume que la stack usa la imagen `postgres:15` definida en `docker-compose.onprem.yml`.
+- El archivo `infra/.env.onprem` se pasa con `--env-file`; ya no se usa `env_file:` dentro del compose.
 - Si prefieres usar una base de datos Postgres instalada en el host en lugar del contenedor, el script puede adaptarse.
 - Para convertir esto en un `.exe` se puede empaquetar el script con una herramienta de terceros o crear un pequeño instalador en Go/Node que ejecute estos pasos.

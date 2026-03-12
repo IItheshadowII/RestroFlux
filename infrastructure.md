@@ -1,105 +1,52 @@
 
-# RestoFlux Infrastructure & Deployment
+# RestroFlux Infrastructure & Deployment
 
-## 1. Local Infrastructure (Docker Compose)
+## Estado actual del repo
 
-Create a `docker-compose.yml` in the project root:
+- El despliegue principal está en [docker-compose.yml](docker-compose.yml).
+- El despliegue on-premise usa [infra/docker-compose.onprem.yml](infra/docker-compose.onprem.yml).
+- El despliegue Docker Swarm/Portainer Stack usa [stack.yml](stack.yml).
+- El repo no depende de un `.env` real versionado: Portainer inyecta variables y los ejemplos están en [.env.example](.env.example) e [infra/.env.onprem.example](infra/.env.onprem.example).
 
-```yaml
-version: '3.8'
-services:
-  db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: restoflux
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password123
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+## Estrategia de variables
 
-  backend:
-    build: ./backend
-    environment:
-      DATABASE_URL: postgresql://restoflux:restoflux@db:5432/restoflux
-      JWT_SECRET: your_ultra_secret_key
-      MP_ACCESS_TOKEN: your_mercadopago_token
-    ports:
-      - "4000:4000"
-    depends_on:
-      - db
+- Para Portainer Repository: define variables en la UI del stack usando [.env.example](.env.example) como checklist.
+- Para Docker Compose local: puedes usar un `.env` local no versionado, pero el compose ya no lo requiere vía `env_file`.
+- Para on-premise: el instalador usa `--env-file infra/.env.onprem` y toma como base [infra/.env.onprem.example](infra/.env.onprem.example).
 
-  frontend:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      VITE_API_URL: http://localhost:4000
-```
+## PostgreSQL en Docker
 
-## 2. Cloud Deployment (Google Cloud Run / Railway)
+- El hostname interno estándar es `restroflux-postgres`.
+- La app prioriza `DATABASE_URL`; si no existe, arma la conexión con `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` y `DB_PASSWORD`.
+- `DATABASE_SSL=false` es el default correcto para PostgreSQL interno del stack. Si usas un PostgreSQL gestionado con TLS, define `DATABASE_SSL=true`.
 
-### Backend
-1. Containerize the Express/Node app using a `Dockerfile`.
-2. Deploy to Cloud Run:
-   ```bash
-  gcloud run deploy restoflux-api --image gcr.io/project/api --platform managed
-   ```
-3. Set Env Vars: `DATABASE_URL`, `JWT_SECRET`, `MP_WEBHOOK_SECRET`.
+## Compatibilidad Portainer / Swarm
 
-### Database
-- Use **Managed PostgreSQL** (Cloud SQL or Railway DB).
-- Run migrations: `npx prisma migrate deploy`.
+- [docker-compose.yml](docker-compose.yml) sirve para Portainer Repository en modo compose y puede construir desde el repo.
+- [stack.yml](stack.yml) sirve para Swarm y usa una imagen preconstruida; Swarm no builda desde git de forma confiable, por eso ahí se usa `image`.
+- El Dockerfile acepta build args `VITE_*` no sensibles para que Vite compile sin depender de un `.env` real.
 
-### Mercado Pago Webhooks
-1. Configure your endpoint in MP Dashboard: `https://api.restoflux.com/v1/webhooks/mercadopago`.
-2. Secure the endpoint verifying the IP and token.
+## On-premise
 
-## 3. RBAC & Multi-tenant isolation
-The system enforces `tenant_id` at the Prisma level using a middleware or by always including it in queries:
-`prisma.product.findMany({ where: { tenantId: currentUser.tenantId } })`.
-
-## 4. On‑Premise Deployment (recommended flow)
-
-Use the provided `infra/docker-compose.onprem.yml` together with a `.env.onprem` file.
-
-Quick steps:
-
-1. Copiar el ejemplo y editar valores:
+1. Crear el archivo local:
 
 ```powershell
 cd infra
-cp .env.onprem.example .env.onprem
-# Editar .env.onprem con tus credenciales locales
+Copy-Item .env.onprem.example .env.onprem
 ```
 
-2. Levantar la stack on‑premise (misma imagen/artifact que en cloud):
+2. Editar variables reales en `infra/.env.onprem`.
 
-```bash
-# Desde la carpeta raiz o infra
-docker compose -f docker-compose.yml -f infra/docker-compose.onprem.yml up -d --build
+3. Ejecutar el instalador:
+
+```powershell
+cd scripts
+powershell -ExecutionPolicy Bypass -File .\install_onprem.ps1
 ```
 
-3. Migraciones y seeds (si aplica):
+## Notas operativas
 
-```bash
-# Ejecutar migraciones contra la BBDD local
-docker exec -i $(docker ps -qf "ancestor=postgres:15") psql -U restoflux -d restoflux -f db/init.sql
-```
-
-4. Activación de licencia (opcional):
-
-Usa el endpoint central o provee la `VITE_LICENSE_KEY` en `.env.onprem`. También puedes activar manualmente via curl:
-
-```bash
-curl -X POST $VITE_CLOUD_URL/api/license/activate \
-  -H "Content-Type: application/json" \
-  -d '{"licenseKey":"GF-XXXX","instanceId":"mi-instancia-001"}'
-```
-
-Notas operativas:
-- No expongas Postgres o MinIO públicamente; usa un reverse proxy (nginx/Caddy) para TLS.
-- Mantén backups periódicos de la BBDD y del directorio `infra/data/uploads`.
-- La app usa las mismas imágenes en cloud y on‑prem; el comportamiento se controla por env vars (`VITE_APP_MODE`, `VITE_API_URL`, `VITE_LICENSE_KEY`).
+- No subas secretos al repo.
+- No expongas PostgreSQL o MinIO públicamente salvo que sea estrictamente necesario.
+- Mantén backups de base de datos y uploads.
 

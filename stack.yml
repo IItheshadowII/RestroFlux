@@ -1,22 +1,15 @@
 name: restroflux
 
 services:
-  # Portainer Repository no monta automáticamente un .env del repo.
-  # Por eso este compose usa variables inyectadas por Portainer y defaults seguros.
+  # Swarm/Portainer Stack debe consumir una imagen ya publicada.
+  # Los secretos y variables se cargan desde la UI de Portainer.
   restroflux-app:
-    build:
-      context: .
-      args:
-        VITE_APP_MODE: ${VITE_APP_MODE:-CLOUD}
-        VITE_API_URL: ${VITE_API_URL:-/api}
-        VITE_CLOUD_URL: ${VITE_CLOUD_URL:-https://app.restroflux.example.com}
-        VITE_LICENSE_KEY: ${VITE_LICENSE_KEY:-}
-        VITE_INSTANCE_ID: ${VITE_INSTANCE_ID:-}
-        VITE_LICENSE_CHECK_INTERVAL_DAYS: ${VITE_LICENSE_CHECK_INTERVAL_DAYS:-1}
-        VITE_LICENSE_GRACE_DAYS: ${VITE_LICENSE_GRACE_DAYS:-7}
-    image: ${RESTROFLUX_IMAGE:-restroflux-app:latest}
+    image: ${RESTROFLUX_IMAGE:-ghcr.io/your-org/restroflux:latest}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - target: 3000
+        published: ${APP_PORT:-3000}
+        protocol: tcp
+        mode: ingress
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
@@ -43,7 +36,9 @@ services:
     depends_on:
       - restroflux-postgres
       - restroflux-minio
-    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: on-failure
 
   restroflux-postgres:
     image: postgres:15
@@ -53,14 +48,9 @@ services:
       POSTGRES_DB: ${DB_NAME:-restroflux}
     volumes:
       - restroflux-pgdata:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: on-failure
 
   restroflux-minio:
     image: minio/minio:RELEASE.2023-09-15T00-00-00Z
@@ -70,17 +60,9 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-in-portainer}
     volumes:
       - restroflux-miniodata:/data
-    ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
-    restart: unless-stopped
-
-# redis opcional para realtime
-#  redis:
-#    image: redis:7
-#    ports:
-#      - "6379:6379"
-#    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: on-failure
 
 volumes:
   restroflux-pgdata:
