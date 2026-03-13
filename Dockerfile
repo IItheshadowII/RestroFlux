@@ -21,7 +21,7 @@ COPY . .
 # sin depender de un .env real versionado.
 ARG VITE_APP_MODE=CLOUD
 ARG VITE_API_URL=/api
-ARG VITE_CLOUD_URL=https://app.restroflux.example.com
+ARG VITE_CLOUD_URL=
 ARG VITE_LICENSE_KEY=
 ARG VITE_INSTANCE_ID=
 ARG VITE_LICENSE_CHECK_INTERVAL_DAYS=1
@@ -53,6 +53,9 @@ RUN npm ci --only=production
 
 # Copiar el servidor Node.js
 COPY server.js ./
+
+# Copiar esquema base para bootstrap automático de una instalación nueva
+COPY db ./db
 
 # Copiar el build del frontend desde la etapa anterior
 COPY --from=builder /app/dist ./dist

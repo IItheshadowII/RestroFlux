@@ -1,21 +1,14 @@
 services:
   restroflux-app:
-    build:
-      context: .
-      args:
-        VITE_APP_MODE: ${VITE_APP_MODE:-LOCAL}
-        VITE_API_URL: ${VITE_API_URL:-/api}
-        VITE_CLOUD_URL: ${VITE_CLOUD_URL:-https://app.restroflux.example.com}
-        VITE_LICENSE_KEY: ${VITE_LICENSE_KEY:-}
-        VITE_INSTANCE_ID: ${VITE_INSTANCE_ID:-local-instance}
-        VITE_LICENSE_CHECK_INTERVAL_DAYS: ${VITE_LICENSE_CHECK_INTERVAL_DAYS:-1}
-        VITE_LICENSE_GRACE_DAYS: ${VITE_LICENSE_GRACE_DAYS:-7}
-    image: ${RESTROFLUX_IMAGE:-restroflux-app:onprem}
+    # Archivo legacy para compatibilidad con el instalador antiguo.
+    # El flujo recomendado ahora es docker-compose.local.yml + install-local.*
+    image: ${RESTROFLUX_IMAGE:-ghcr.io/iitheshadowii/restroflux-app:latest}
     ports:
-      - "3000:3000"
+      - "${APP_HTTP_PORT:-3000}:3000"
     volumes:
       - ./infra/data/uploads:/app/uploads
     environment:
+      APP_MODE: ${APP_MODE:-LOCAL}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-}
@@ -23,21 +16,26 @@ services:
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-restroflux}
       DB_USER: ${DB_USER:-restroflux}
-      DB_PASSWORD: ${DB_PASSWORD:-restroflux-onprem}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
       DATABASE_SSL: ${DATABASE_SSL:-false}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
-      JWT_SECRET: ${JWT_SECRET:-change-me-onprem}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-RestroFlux <no-reply@restroflux.local>}
+      SMTP_FROM: ${SMTP_FROM:-RestroFlux <no-reply@example.invalid>}
       MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN:-}
       MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GLOBAL_ADMIN_BOOTSTRAP_TOKEN: ${GLOBAL_ADMIN_BOOTSTRAP_TOKEN:-}
       MULTI_TENANT_ENFORCE_AUTH: ${MULTI_TENANT_ENFORCE_AUTH:-true}
+      STORAGE_TYPE: ${STORAGE_TYPE:-local}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-restroflux-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-me}
+      MINIO_BUCKET: ${MINIO_BUCKET:-restroflux}
     depends_on:
       - restroflux-postgres
       - restroflux-minio
@@ -46,13 +44,13 @@ services:
   restroflux-postgres:
     image: postgres:15
     environment:
-      POSTGRES_USER: ${DB_USER:-restroflux}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-restroflux-onprem}
-      POSTGRES_DB: ${DB_NAME:-restroflux}
+      POSTGRES_USER: ${POSTGRES_USER:-restroflux}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-restroflux}
     volumes:
       - restroflux-pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     restart: unless-stopped
 
   restroflux-minio:
@@ -60,12 +58,12 @@ services:
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-restroflux-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
     volumes:
       - restroflux-miniodata:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     restart: unless-stopped
 
 volumes:

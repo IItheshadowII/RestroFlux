@@ -12,9 +12,6 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE_NAME: ghcr.io/iitheshadowii/restroflux-app
-
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -22,6 +19,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Normalize GHCR image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/restroflux-app" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -40,7 +42,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: ${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short,prefix=sha-
@@ -58,7 +60,7 @@ jobs:
           build-args: |
             VITE_APP_MODE=CLOUD
             VITE_API_URL=/api
-            VITE_CLOUD_URL=https://app.restroflux.example.com
+            VITE_CLOUD_URL=
             VITE_LICENSE_KEY=
             VITE_INSTANCE_ID=
             VITE_LICENSE_CHECK_INTERVAL_DAYS=1

@@ -11,7 +11,7 @@ const isLocalHostname = hostname === 'localhost' || hostname === '127.0.0.1';
 // AUTO: detecta CLOUD si se pasa VITE_API_URL, o usar VITE_APP_MODE explícito
 const APP_MODE = env.VITE_APP_MODE || (env.VITE_API_URL ? 'CLOUD' : (isLocalHostname ? 'LOCAL' : 'CLOUD')); // 'LOCAL' or 'CLOUD'
 const API_URL = env.VITE_API_URL || '/api'; // URL del backend en modo Cloud
-const CLOUD_URL = env.VITE_CLOUD_URL || 'https://app.restroflux.example.com'; // URL para verificar licencia en modo Local
+const CLOUD_URL = env.VITE_CLOUD_URL || ''; // En localStorage legacy usa same-origin si no se define una nube central
 const LICENSE_KEY = env.VITE_LICENSE_KEY || '';
 const LICENSE_CHECK_INTERVAL_DAYS = parseInt(env.VITE_LICENSE_CHECK_INTERVAL_DAYS || '1', 10);
 const LICENSE_GRACE_DAYS = parseInt(env.VITE_LICENSE_GRACE_DAYS || '7', 10);

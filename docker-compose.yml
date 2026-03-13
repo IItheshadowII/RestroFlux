@@ -1,10 +1,12 @@
+# Alias de compatibilidad para despliegue cloud/demo.
+# El archivo canónico para este modo es docker-compose.cloud.yml.
 services:
-  # Portainer/Swarm debe consumir imágenes publicadas; no builda localmente.
   restroflux-app:
     image: ${RESTROFLUX_IMAGE:-ghcr.io/iitheshadowii/restroflux-app:latest}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_HTTP_PORT:-3000}:3000"
     environment:
+      APP_MODE: ${APP_MODE:-CLOUD}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-}
@@ -12,21 +14,26 @@ services:
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-restroflux}
       DB_USER: ${DB_USER:-restroflux}
-      DB_PASSWORD: ${DB_PASSWORD:-change-me-in-portainer}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
       DATABASE_SSL: ${DATABASE_SSL:-false}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-portainer}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
       GLOBAL_ADMIN_BOOTSTRAP_TOKEN: ${GLOBAL_ADMIN_BOOTSTRAP_TOKEN:-}
       MULTI_TENANT_ENFORCE_AUTH: ${MULTI_TENANT_ENFORCE_AUTH:-true}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://app.restroflux.example.com}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-RestroFlux <no-reply@restroflux.example.com>}
+      SMTP_FROM: ${SMTP_FROM:-RestroFlux <no-reply@example.invalid>}
       MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN:-}
       MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      STORAGE_TYPE: ${STORAGE_TYPE:-local}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-restroflux-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-me}
+      MINIO_BUCKET: ${MINIO_BUCKET:-restroflux}
     depends_on:
       - restroflux-postgres
       - restroflux-minio
@@ -35,9 +42,9 @@ services:
   restroflux-postgres:
     image: postgres:15
     environment:
-      POSTGRES_USER: ${DB_USER:-restroflux}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me-in-portainer}
-      POSTGRES_DB: ${DB_NAME:-restroflux}
+      POSTGRES_DB: ${POSTGRES_DB:-restroflux}
+      POSTGRES_USER: ${POSTGRES_USER:-restroflux}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
       - restroflux-pgdata:/var/lib/postgresql/data
     expose:
@@ -54,20 +61,13 @@ services:
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-in-portainer}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
     volumes:
       - restroflux-miniodata:/data
     expose:
       - "9000"
       - "9001"
     restart: unless-stopped
-
-# redis opcional para realtime
-#  redis:
-#    image: redis:7
-#    ports:
-#      - "6379:6379"
-#    restart: unless-stopped
 
 volumes:
   restroflux-pgdata:

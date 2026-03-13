@@ -1,6 +1,19 @@
-# Instalador On‑Premise (Windows)
+# Instalador On-Premise Legacy
 
-Estos scripts permiten instalar RestoFlux en la máquina del cliente usando Docker Compose.
+Estos archivos se conservan por compatibilidad con instalaciones anteriores.
+
+El flujo recomendado actual está en la raíz del proyecto:
+
+- [install-local.ps1](install-local.ps1)
+- [install-local.sh](install-local.sh)
+- [docker-compose.local.yml](docker-compose.local.yml)
+- [.env.example](.env.example)
+
+Documentación principal:
+
+- [DEPLOY_LOCAL.md](DEPLOY_LOCAL.md)
+- [BACKUP.md](BACKUP.md)
+- [UPDATE.md](UPDATE.md)
 
 Requisitos
 - Windows 10/11 con Docker Desktop instalado y funcionando (WSL2 recomendado).
@@ -13,7 +26,7 @@ Archivos principales
 - `infra/scripts/backup.ps1` — realiza backup de la BBDD y uploads.
 - `infra/scripts/restore.ps1` — restaura backup y uploads.
 
-Uso rápido
+Uso rápido legacy
 1. Copiar el ejemplo de variables:
 
 ```powershell
@@ -47,7 +60,6 @@ powershell -ExecutionPolicy Bypass -File .\restore.ps1 -BackupSql "..\backups\pg
 ```
 
 Notas
-- El script asume que la stack usa la imagen `postgres:15` definida en `docker-compose.onprem.yml`.
-- El archivo `infra/.env.onprem` se pasa con `--env-file`; ya no se usa `env_file:` dentro del compose.
-- Si prefieres usar una base de datos Postgres instalada en el host en lugar del contenedor, el script puede adaptarse.
-- Para convertir esto en un `.exe` se puede empaquetar el script con una herramienta de terceros o crear un pequeño instalador en Go/Node que ejecute estos pasos.
+- Este flujo quedó como compatibilidad. Para nuevas instalaciones usa los scripts en raíz.
+- El archivo `infra/.env.onprem` se puede seguir usando, pero la plantilla principal es ahora `.env.example`.
+- Si necesitas empaquetado más cerrado para cliente final, puedes usar el instalador en Go de `infra/installer/` como base futura.

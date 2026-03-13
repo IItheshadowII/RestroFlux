@@ -1,5 +1,6 @@
 
 import express from 'express';
+import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -308,6 +309,14 @@ const extractWebhookTypeAndId = (req) => {
 const ensureSchema = async () => {
   const client = await pool.connect();
   try {
+    const bootstrapSchemaPath = path.join(__dirname, 'db', 'init.sql');
+    if (fs.existsSync(bootstrapSchemaPath)) {
+      const bootstrapSql = fs.readFileSync(bootstrapSchemaPath, 'utf8');
+      if (bootstrapSql.trim()) {
+        await client.query(bootstrapSql);
+      }
+    }
+
     await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
 
     // Global admins (fuera del ámbito tenant)
@@ -2112,8 +2121,14 @@ app.post('/api/subscriptions', requireAuth, async (req, res) => {
       console.warn('No se pudo promover a tenant admin (continúa):', e?.message || e);
     }
 
+    const resolvedBaseUrl = getBaseUrlForLinks(req);
+    const fallbackBackUrl = resolvedBaseUrl ? `${resolvedBaseUrl}/billing` : '';
+    if (!backUrl && !fallbackBackUrl) {
+      return res.status(400).json({ error: 'PUBLIC_BASE_URL o backUrl requerido para iniciar suscripciones' });
+    }
+
     const computedBackUrl = withQueryParams(
-      backUrl || 'https://restoflux.accesoit.com.ar/billing',
+      backUrl || fallbackBackUrl,
       { tenantId, mp: 1 }
     );
 

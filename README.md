@@ -1,5 +1,5 @@
 <div align="center">
-   <h1>RestoFlux SaaS</h1>
+   <h1>RestroFlux</h1>
    <p>Panel de control multi-tenant para restaurantes, con backend Node.js + PostgreSQL e IA (Gemini).</p>
 </div>
 
@@ -7,7 +7,14 @@
 
 ## Descripción
 
-RestoFlux es una aplicación SaaS multi-tenant para la gestión integral de restaurantes:
+RestroFlux es una aplicación multi-tenant para la gestión integral de restaurantes, bares y negocios gastronómicos.
+
+El proyecto queda preparado con dos modos de despliegue operativos:
+
+- Cloud / Demo: imagen publicada en GHCR, lista para Portainer y Docker Swarm.
+- Local / On-Premise: instalación simple con Docker Compose y variables editables, pensada para servidor de cliente.
+
+Capacidades principales:
 
 - Plano de mesas, cuentas abiertas y cobros.
 - Pantalla de cocina en tiempo real (Socket.IO).
@@ -18,6 +25,16 @@ RestoFlux es una aplicación SaaS multi-tenant para la gestión integral de rest
 - Panel de Admin Global para gestión de tenants e IA (Gemini).
 
 El frontend está hecho en React + Vite y el backend en Node.js/Express con PostgreSQL, empaquetados en el mismo repositorio.
+
+## Estructura de despliegue
+
+- [docker-compose.cloud.yml](docker-compose.cloud.yml): despliegue cloud/demo con imagen publicada.
+- [docker-compose.local.yml](docker-compose.local.yml): instalación local/on-premise para cliente.
+- [docker-compose.yml](docker-compose.yml): alias de compatibilidad del modo cloud.
+- [stack.yml](stack.yml): variante para stack Swarm.
+- [install-local.sh](install-local.sh): instalador Linux para cliente/técnico.
+- [install-local.ps1](install-local.ps1): instalador Windows para cliente/técnico.
+- [.env.example](.env.example): plantilla única de variables.
 
 ## Arquitectura
 
@@ -67,9 +84,9 @@ Las variables leídas en `services/db.ts` son:
 - `VITE_CLOUD_URL` — URL de la nube central (licencias on-premise).
 - `VITE_LICENSE_KEY`, `VITE_INSTANCE_ID`, `VITE_LICENSE_CHECK_INTERVAL_DAYS`, `VITE_LICENSE_GRACE_DAYS` — gestión de licencias en instalaciones on-premise.
 
-En Docker/Portainer, las variables `VITE_*` se pasan como build args. El repo ya no depende de un `.env` real para desplegar.
+La imagen publicada en GHCR ya sale compilada en modo API (`VITE_APP_MODE=CLOUD`, `VITE_API_URL=/api`). Para despliegues normales cloud y local no hace falta recompilar frontend en cliente.
 
-## Ejecutar en desarrollo (local)
+## Desarrollo
 
 1. Instalar dependencias:
 
@@ -77,7 +94,7 @@ En Docker/Portainer, las variables `VITE_*` se pasan como build args. El repo ya
    npm install
    ```
 
-2. Levantar PostgreSQL (puedes usar el `docker-compose.yml` incluido):
+2. Levantar PostgreSQL (puedes usar el compose que prefieras o una base existente):
 
    ```bash
    docker compose up -d postgres
@@ -128,15 +145,28 @@ En Docker/Portainer, las variables `VITE_*` se pasan como build args. El repo ya
 
    `server.js` sirve el contenido de `dist/` y expone la API REST y Socket.IO en el mismo puerto.
 
-3. Alternativamente, puedes usar Docker Compose (app + Postgres + MinIO):
+## Despliegue
 
-   ```bash
-   docker compose up -d
-   ```
+### Cloud / Demo
 
-   El compose raíz ya no usa `env_file`. Para Portainer Repository, carga las variables en la UI usando [.env.example](.env.example) como referencia. Para Swarm usa [stack.yml](stack.yml) con una imagen ya publicada.
+Usa [DEPLOY_CLOUD.md](DEPLOY_CLOUD.md).
+
+### Local / On-Premise
+
+Usa [DEPLOY_LOCAL.md](DEPLOY_LOCAL.md).
+
+### Backup y actualización
+
+- [BACKUP.md](BACKUP.md)
+- [UPDATE.md](UPDATE.md)
 
 ## Modo CLOUD vs LOCAL
+
+En el producto desplegado, tanto cloud como on-premise usan backend + PostgreSQL.
+
+- `APP_MODE=CLOUD` o `APP_MODE=LOCAL` identifica el tipo de despliegue.
+- El frontend productivo se ejecuta en modo API (`VITE_APP_MODE=CLOUD`) para ambos escenarios.
+- El modo `VITE_APP_MODE=LOCAL` queda como capacidad legacy/dev basada en localStorage, no como despliegue recomendado para clientes.
 
 El archivo `services/db.ts` actúa como **adaptador de datos**:
 
@@ -152,7 +182,10 @@ La integración con IA (Gemini) se realiza desde el backend (`server.js`) utiliz
 ## Recursos adicionales
 
 - Guía de migración y arquitectura de producción: `PRODUCTION_GUIDE.md`.
-- Infraestructura on-premise y empaquetado: carpeta `infra/`.
+- Infraestructura legacy/on-premise y empaquetado: carpeta `infra/`.
 - Scripts de base de datos y migraciones: carpeta `db/`.
-- Despliegue Portainer/Swarm: [DEPLOY_PORTAINER.md](DEPLOY_PORTAINER.md).
+- Despliegue cloud: [DEPLOY_CLOUD.md](DEPLOY_CLOUD.md).
+- Despliegue local: [DEPLOY_LOCAL.md](DEPLOY_LOCAL.md).
+- Backup: [BACKUP.md](BACKUP.md).
+- Update: [UPDATE.md](UPDATE.md).
 
