@@ -11,9 +11,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       DB_HOST: ${DB_HOST:-restroflux-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-restroflux}
-      DB_USER: ${DB_USER:-restroflux}
-      DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      DB_NAME: ${POSTGRES_DB:-restroflux}
+      DB_USER: ${POSTGRES_USER:-restroflux}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       DATABASE_SSL: ${DATABASE_SSL:-false}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
       JWT_SECRET: ${JWT_SECRET:-change-me}

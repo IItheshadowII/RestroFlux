@@ -31,7 +31,9 @@ La app se publica en GHCR con este formato:
 
 - `PUBLIC_BASE_URL`
 - `JWT_SECRET`
-- `DB_PASSWORD` y `POSTGRES_PASSWORD`, o bien `DATABASE_URL`
+- `POSTGRES_PASSWORD`, o bien `DATABASE_URL`
+
+Por defecto la app usa `POSTGRES_DB`, `POSTGRES_USER` y `POSTGRES_PASSWORD` para conectarse al contenedor PostgreSQL del stack. Solo define `DB_*` si necesitas forzar credenciales distintas.
 
 Variables opcionales:
 

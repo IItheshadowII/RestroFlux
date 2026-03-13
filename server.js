@@ -48,11 +48,11 @@ const envFlagEnabled = (value) => {
 const buildDatabaseUrl = () => {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
 
-  const host = process.env.DB_HOST || '';
-  const port = process.env.DB_PORT || '5432';
-  const database = process.env.DB_NAME || '';
-  const user = process.env.DB_USER || '';
-  const password = process.env.DB_PASSWORD || '';
+  const host = process.env.DB_HOST || process.env.POSTGRES_HOST || '';
+  const port = process.env.DB_PORT || process.env.POSTGRES_PORT || '5432';
+  const database = process.env.DB_NAME || process.env.POSTGRES_DB || '';
+  const user = process.env.DB_USER || process.env.POSTGRES_USER || '';
+  const password = process.env.DB_PASSWORD || process.env.POSTGRES_PASSWORD || '';
 
   if (!host || !database || !user) return '';
 
